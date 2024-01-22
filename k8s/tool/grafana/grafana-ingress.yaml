@@ -11,7 +11,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: grafana
+            name: grafana-np
             port: 
               number: 443
   tls:

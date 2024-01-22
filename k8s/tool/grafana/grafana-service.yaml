@@ -3,7 +3,7 @@ kind: Service
 metadata:
   labels:
     app: grafana
-  name: grafana
+  name: grafana-service
 spec:
   ports:
   - port: 443
@@ -11,4 +11,4 @@ spec:
     targetPort: 3000
   selector:
     app: grafana
-  type: LoadBalancer
+  type: ClusterIP
