@@ -13,8 +13,8 @@ spec:
           service:
             name: grafana-np
             port: 
-              number: 443
+              number: 80
   tls:
   - hosts:
-    - grafana.example.com
-    secretName: tls-grafana
+    - sbdemo.example.com
+    secretName: tls-sbdemo
