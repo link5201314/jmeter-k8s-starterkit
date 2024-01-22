@@ -16,5 +16,5 @@ spec:
               number: 443
   tls:
   - hosts:
-    - sbdemo.example.com
-    secretName: tls-sbdemo
+    - grafana.example.com
+    secretName: tls-grafana
