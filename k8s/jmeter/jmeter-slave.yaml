@@ -71,6 +71,10 @@ spec:
             mbean  = "java.lang:type=Threading"
             attribute = "TotalStartedThreadCount,ThreadCount,DaemonThreadCount,PeakThreadCount"
     spec:
+      hostAliases:
+      - ip: 192.168.140.2
+        hostnames:
+        - sbdemo.example.com
       containers:
       - name: jmslave
         image: rbillon59/jmeter-k8s-base:5.4.1
