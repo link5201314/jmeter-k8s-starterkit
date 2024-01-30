@@ -78,7 +78,7 @@ spec:
       containers:
       - name: jmslave
         image: rbillon59/jmeter-k8s-base:5.4.1
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         env:
         - name: MODE
           value: "SLAVE"

@@ -79,7 +79,7 @@ spec:
       containers:
       - name: jmmaster
         image: rbillon59/jmeter-k8s-base:5.4.1
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         volumeMounts:
             - mountPath: /report
               name: jmeter-data-dir
