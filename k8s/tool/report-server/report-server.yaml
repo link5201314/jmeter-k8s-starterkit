@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: report-server
-  namespace: default
   labels:
     app: report-server
     config_source: "static"
@@ -39,7 +38,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: report-server
-  namespace: default
 spec:
   selector:
     app: report-server
@@ -51,7 +49,6 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: report-server-nginx-conf
-  namespace: default
 data:
   default.conf: |
     server {
