@@ -69,6 +69,14 @@ if [ -z "${jmx}" ]; then
     usage
 fi
 
+# 檢查 report-server 與 PVC 是否在同一 namespace
+if ! kubectl -n "${namespace}" get pvc jmeter-data-dir-pvc >/dev/null 2>&1; then
+    logit "WARN" "PVC jmeter-data-dir-pvc 不在 namespace=${namespace}，報表可能無法被 report-server 讀取"
+fi
+if ! kubectl -n "${namespace}" get deploy report-server >/dev/null 2>&1; then
+    logit "WARN" "report-server 不在 namespace=${namespace}，report.example.com 可能讀不到報表"
+fi
+
 jmx_dir="${jmx%%.*}"
 
 if [ ! -f "scenario/${jmx_dir}/${jmx}" ]; then
@@ -76,10 +84,27 @@ if [ ! -f "scenario/${jmx_dir}/${jmx}" ]; then
     usage
 fi
 
+# Load JMeter resource env vars
+if [ -f "${PWD}/config/jmeter.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${PWD}/config/jmeter.env"
+    set +a
+else
+    logit "WARN" "Missing config/jmeter.env; resources placeholders may not be substituted"
+fi
+
 # Recreating each pods
 logit "INFO" "Recreating pod set"
 kubectl -n "${namespace}" delete -f k8s/jmeter/jmeter-master.yaml -f k8s/jmeter/jmeter-slave.yaml 2> /dev/null
-kubectl -n "${namespace}" apply -f k8s/jmeter
+
+tmp_master="$(mktemp)"
+tmp_slave="$(mktemp)"
+envsubst < k8s/jmeter/jmeter-master.yaml > "${tmp_master}"
+envsubst < k8s/jmeter/jmeter-slave.yaml > "${tmp_slave}"
+kubectl -n "${namespace}" apply -f "${tmp_master}" -f "${tmp_slave}"
+rm -f "${tmp_master}" "${tmp_slave}"
+
 kubectl -n "${namespace}" patch job jmeter-slaves -p '{"spec":{"parallelism":0}}'
 logit "INFO" "Waiting for all slaves pods to be terminated before recreating the pod set"
 while [[ $(kubectl -n ${namespace} get pods -l jmeter_mode=slave -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "" ]]; do echo "$(kubectl -n ${namespace} get pods -l jmeter_mode=slave )" && sleep 1; done
@@ -118,6 +143,38 @@ slave_digit="${#slave_num}"
 # jmeter directory in pods
 jmeter_directory="/opt/jmeter/apache-jmeter/bin"
 
+logit "Ready to copy files and start the test"
+# system properties file (optional)
+system_properties_file="scenario/${jmx_dir}/jmeter-system.properties"
+system_property_arg=""
+if [ -f "${system_properties_file}" ]; then
+    logit "INFO" "Found system properties: ${system_properties_file}"
+    system_property_arg="-S ${jmeter_directory}/jmeter-system.properties"
+else 
+    logit "INFO" "No system properties file found in scenario/${jmx_dir}/jmeter-system.properties, skipping copying system properties file"
+fi
+
+# -J injection for report properties (optional)
+report_props_arg=""
+if [ -f "${system_properties_file}" ]; then
+    get_prop() {
+        grep -E "^[[:space:]]*$1=" "${system_properties_file}" | tail -n 1 | cut -d'=' -f2-
+    }
+    add_prop_arg() {
+        local key="$1"
+        local val
+        val="$(get_prop "${key}")"
+        if [ -n "${val}" ]; then
+            report_props_arg="${report_props_arg} -J${key}=${val}"
+            logit "INFO" "Using ${key}: ${val}"
+        fi
+    }
+
+    add_prop_arg "jmeter.reportgenerator.overall_granularity"
+    add_prop_arg "jmeter.reportgenerator.apdex_satisfied_threshold"
+    add_prop_arg "jmeter.reportgenerator.apdex_tolerated_threshold"
+fi
+
 # Copying module and config to pods
 if [ -n "${module}" ]; then
     logit "INFO" "Using modules (test fragments), uploading them in the pods"
@@ -148,12 +205,19 @@ for ((i=0; i<end; i++))
 do
     logit "INFO" "Copying scenario/${jmx_dir}/${jmx} to ${slave_pods[$i]}"
     kubectl cp -c jmslave "scenario/${jmx_dir}/${jmx}" -n "${namespace}" "${slave_pods[$i]}:/opt/jmeter/apache-jmeter/bin/" &
+    if [ -n "${system_property_arg}" ]; then
+        logit "INFO" "Copying ${system_properties_file} to ${slave_pods[$i]}"
+        kubectl cp -c jmslave "${system_properties_file}" -n "${namespace}" "${slave_pods[$i]}:${jmeter_directory}/jmeter-system.properties" &
+    fi
 done # for i in "${slave_pods[@]}"
 logit "INFO" "Finish copying scenario in slaves pod"
 
 logit "INFO" "Copying scenario/${jmx_dir}/${jmx} into ${master_pod}"
 kubectl cp -c jmmaster "scenario/${jmx_dir}/${jmx}" -n "${namespace}" "${master_pod}:/opt/jmeter/apache-jmeter/bin/" &
-
+if [ -n "${system_property_arg}" ]; then
+    logit "INFO" "Copying ${system_properties_file} into ${master_pod}"
+    kubectl cp -c jmmaster "${system_properties_file}" -n "${namespace}" "${master_pod}:${jmeter_directory}/jmeter-system.properties" &
+fi
 
 logit "INFO" "Installing needed plugins on slave pods"
 ## Starting slave pod 
@@ -161,7 +225,7 @@ logit "INFO" "Installing needed plugins on slave pods"
 {
     echo "cd ${jmeter_directory}"
     echo "sh PluginsManagerCMD.sh install-for-jmx ${jmx} > plugins-install.out 2> plugins-install.err"
-    echo "jmeter-server -Dserver.rmi.localport=50000 -Dserver_port=1099 -Jserver.rmi.ssl.disable=true >> jmeter-injector.out 2>> jmeter-injector.err &"
+    echo "jmeter-server -Dserver.rmi.localport=50000 -Dserver_port=1099 -Jserver.rmi.ssl.disable=true ${system_property_arg} >> jmeter-injector.out 2>> jmeter-injector.err &"
     echo "trap 'kill -10 1' EXIT INT TERM"
     echo "java -jar /opt/jmeter/apache-jmeter/lib/jolokia-java-agent.jar start JMeter >> jmeter-injector.out 2>> jmeter-injector.err"
     echo "wait"
@@ -227,7 +291,7 @@ param_user="-Gthreads=${threads} -Gduration=${duration} -Grampup=${rampup}"
 
 
 if [ -n "${enable_report}" ]; then
-    report_command_line="--reportatendofloadtests --reportoutputfolder /report/report-${jmx}-$(date +"%F_%H%M%S")"
+    report_command_line="--reportatendofloadtests --reportoutputfolder /report/${jmx_dir}/report-${jmx}-$(date +"%F_%H%M%S")"
 fi
 
 echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -gt 0 ]; do for slave in \${slave_array[@]}; do if echo 'test open port' 2>/dev/null > /dev/tcp/\${slave}/1099; then echo \${slave}' ready' && slave_array=(\${slave_array[@]/\${slave}/}); index=\$((index-1)); else echo \${slave}' not ready'; fi; done; echo 'Waiting for slave readiness'; sleep 2; done" > "scenario/${jmx_dir}/load_test.sh"
@@ -237,7 +301,8 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
     echo "cd /opt/jmeter/apache-jmeter/bin" 
     echo "sh PluginsManagerCMD.sh install-for-jmx ${jmx}" 
     echo "echo \"Done installing plugins, launching test\""
-    echo "jmeter ${param_host} ${param_user} ${report_command_line} --logfile /report/${jmx}_$(date +"%F_%H%M%S").jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remoteexit --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err &"
+    echo "mkdir -p /report/${jmx_dir}"
+    echo "jmeter ${param_host} ${param_user} ${report_command_line} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx}_$(date +"%F_%H%M%S").jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remoteexit --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err &"
     echo "trap 'kill -10 1' EXIT INT TERM"
     echo "java -jar /opt/jmeter/apache-jmeter/lib/jolokia-java-agent.jar start JMeter >> jmeter-master.out 2>> jmeter-master.err"
     echo "echo \"Starting load test at : $(date)\" && wait"

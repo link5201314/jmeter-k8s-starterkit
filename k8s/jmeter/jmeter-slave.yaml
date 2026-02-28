@@ -90,11 +90,11 @@ spec:
         - containerPort: 4445
         resources:
           requests:
-            memory: "1024Mi"
-            cpu: "1024m"
+            memory: "${JMETER_SLAVE_REQUEST_MEMORY}"
+            cpu: "${JMETER_SLAVE_REQUEST_CPU}"
           limits:
-            memory: "1024Mi"
-            cpu: "1024m"
+            memory: "${JMETER_SLAVE_LIMIT_MEMORY}"
+            cpu: "${JMETER_SLAVE_LIMIT_CPU}"
         livenessProbe:
           exec:
             command:

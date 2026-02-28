@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: report-server
+  namespace: default
+spec:
+  rules:
+  - host: report.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: report-server
+            port:
+              number: 80
