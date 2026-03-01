@@ -326,7 +326,7 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
     echo "mkdir -p /report/${jmx_dir}"
     echo "JVM_ARGS=\"${JMETER_MASTER_JVM_HEAP_ARGS}\""
     echo "export JVM_ARGS"
-    echo "jmeter ${param_host} ${param_user} ${report_command_line} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx}_$(date +"%F_%H%M%S").jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remoteexit --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err &"
+    echo "jmeter ${param_host} ${param_test} ${param_user} ${report_command_line} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx}_$(date +"%F_%H%M%S").jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remoteexit --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err &"
     echo "trap 'kill -10 1' EXIT INT TERM"
     echo "java -jar /opt/jmeter/apache-jmeter/lib/jolokia-java-agent.jar start JMeter >> jmeter-master.out 2>> jmeter-master.err"
     echo "echo \"Starting load test at : $(date)\" && wait"
