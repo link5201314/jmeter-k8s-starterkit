@@ -72,7 +72,7 @@ spec:
     spec:
       containers:
       - name: wiremock
-        image: rbillon59/wiremock-loadtest:latest
+        image: rbillon59/wiremock-loadtest:3.9.1-1
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

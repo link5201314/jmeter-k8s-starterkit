@@ -64,7 +64,7 @@ spec:
           serviceAccountName: cleaner
           containers:
           - name: kubectl-container
-            image: bitnami/kubectl:latest
+            image: bitnami/kubectl@sha256:fd0cffa1252d718a561fee455ea5ae88781acbf31e59171ce7160ff762aa2980
             command: ["sh", "/tmp/clean.sh"]
             env:
             - name: POD_NAMESPACE
