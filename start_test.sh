@@ -308,7 +308,7 @@ slave_array=($(echo ${slave_list} | sed 's/,/ /g'))
 source "scenario/${jmx_dir}/.env"
 
 param_host="-Ghost=${host} -Gport=${port} -Gprotocol=${protocol}"
-param_test="-GtimeoutConnect=${timeoutConnect} -GtimeoutResponse=${timeoutResponse}"
+param_test="-GtimeoutConnect=${timeoutConnect} -GtimeoutResponse=${timeoutResponse} -Gdata_dir=${data_dir}"
 param_user="-Gthreads=${threads} -Gduration=${duration} -Grampup=${rampup}"
 
 
