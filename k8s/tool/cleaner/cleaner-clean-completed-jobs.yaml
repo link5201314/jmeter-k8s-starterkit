@@ -38,11 +38,16 @@ data:
   clean.sh: |+
     #!/bin/sh
     set -x 
-    master_pod=$(kubectl get pod -o name --selector jmeter_mode=master)
-    status=$(kubectl describe ${master_pod} | grep Reason: | awk -F " " '{print $2}')
-    if [ "${status}" = "Completed" ]; then
-      kubectl delete jobs --selector jmeter_mode=slave 
-      kubectl delete jobs --selector jmeter_mode=master
+    NS="${POD_NAMESPACE:-default}"
+    master_done_count=$(kubectl -n "$NS" get pod -l jmeter_mode=master \
+      -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -c '^Succeeded$' || true)
+
+    master_total_count=$(kubectl -n "$NS" get pod -l jmeter_mode=master \
+      -o jsonpath='{.items[*].metadata.name}' | wc -w | tr -d ' ')    
+
+    if [ "$master_total_count" -gt 0 ] && [ "$master_done_count" -eq "$master_total_count" ]; then
+      kubectl -n "$NS" delete jobs --selector jmeter_mode=slave 
+      kubectl -n "$NS" delete jobs --selector jmeter_mode=master
     fi
 ---
 apiVersion: batch/v1
@@ -61,6 +66,11 @@ spec:
           - name: kubectl-container
             image: bitnami/kubectl:latest
             command: ["sh", "/tmp/clean.sh"]
+            env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             volumeMounts:
             - name: cleaner-script
               mountPath: /tmp/
