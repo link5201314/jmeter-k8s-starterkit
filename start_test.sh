@@ -237,6 +237,11 @@ logit "INFO" "Installing needed plugins on slave pods"
 if [ -n "${csv}" ]; then
     logit "INFO" "Splitting and uploading csv to pods"
     dataset_dir=./scenario/dataset
+    split_dir="${dataset_dir}/_split"
+
+    # 每次處理前清空 _split 目錄
+    mkdir -p "${split_dir}"
+    rm -f "${split_dir}"/*
 
     for csvfilefull in $(ls ${dataset_dir}/*.csv)
         do
@@ -254,7 +259,7 @@ if [ -n "${csv}" ]; then
             shuf -o "${tmp_csv}" "${tmp_csv}"
 
             logit "INFO" "split (exclude header) into ${slave_num} parts"
-            split -n l/${slave_num} -d -a "${slave_digit}" "${tmp_csv}" "${csvfilefull}"
+            split -n l/${slave_num} -d -a "${slave_digit}" "${tmp_csv}" "${split_dir}/${csvfile}"
             rm -f "${tmp_csv}"
 
             for ((i=0; i<end; i++))
@@ -273,7 +278,7 @@ if [ -n "${csv}" ]; then
                     j=${i}                    
                 fi
 
-                chunk_file="${csvfilefull}${j}"
+                chunk_file="${split_dir}/${csvfile}${j}"
                 if [ -f "${chunk_file}" ]; then
                     { printf '%s\n' "${header_line}"; cat "${chunk_file}"; } > "${chunk_file}.tmp" && mv "${chunk_file}.tmp" "${chunk_file}"
                 fi
