@@ -243,9 +243,19 @@ if [ -n "${csv}" ]; then
             logit "INFO" "csvfilefull=${csvfilefull}"
             csvfile="${csvfilefull##*/}"
             logit "INFO" "Processing file.. $csvfile"
-            lines_total=$(cat "${csvfilefull}" | wc -l)
-            logit "INFO" "split --suffix-length=\"${slave_digit}\" -d -l $((lines_total/slave_num)) \"${csvfilefull}\" \"${csvfilefull}/\""
-            split --suffix-length="${slave_digit}" -d -l $((lines_total/slave_num)) "${csvfilefull}" "${csvfilefull}"
+
+            header_line="$(head -n 1 "${csvfilefull}")"
+
+            # 排除首行標題，避免進入分割
+            tmp_csv="$(mktemp)"
+            tail -n +2 "${csvfilefull}" > "${tmp_csv}"
+
+            logit "INFO" "Shuffling data rows before split"
+            shuf -o "${tmp_csv}" "${tmp_csv}"
+
+            logit "INFO" "split (exclude header) into ${slave_num} parts"
+            split -n l/${slave_num} -d -a "${slave_digit}" "${tmp_csv}" "${csvfilefull}"
+            rm -f "${tmp_csv}"
 
             for ((i=0; i<end; i++))
             do
@@ -263,8 +273,13 @@ if [ -n "${csv}" ]; then
                     j=${i}                    
                 fi
 
-                printf "Copy %s to %s on %s\n" "${csvfilefull}${j}" "${csvfile}" "${slave_pods[$i]}"
-                kubectl -n "${namespace}" cp -c jmslave "${csvfilefull}${j}" "${slave_pods[$i]}":"${jmeter_directory}/${csvfile}" &
+                chunk_file="${csvfilefull}${j}"
+                if [ -f "${chunk_file}" ]; then
+                    { printf '%s\n' "${header_line}"; cat "${chunk_file}"; } > "${chunk_file}.tmp" && mv "${chunk_file}.tmp" "${chunk_file}"
+                fi
+
+                printf "Copy %s to %s on %s\n" "${chunk_file}" "${csvfile}" "${slave_pods[$i]}"
+                kubectl -n "${namespace}" cp -c jmslave "${chunk_file}" "${slave_pods[$i]}":"${jmeter_directory}/${csvfile}" &
             done
     done
 fi
