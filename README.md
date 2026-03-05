@@ -13,6 +13,15 @@ You will find inside it the necessary to organize and run your performance scena
 
 Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the inspiration !
 
+## 客製版重點（Helm 管理模式）
+
+此客製版已將原本以 `kubectl create -R -f k8s/` 為主的部署方式，改為以 Helm 為主的管理模式。
+
+- 基礎元件以 `perf-stack` release 管理（環境值檔：`k8s/helm/environments/*.yaml`）
+- 測試執行期資源以 `jmeter-runtime` release 管理（由 `start_test.sh` 動態部署）
+- 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
+- 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`）
+
 
 ## Features
 
