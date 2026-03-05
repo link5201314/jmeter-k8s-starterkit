@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 
+# Purpose:
+#   停止目前測試；可選擇同時卸載 jmeter runtime Helm release。
+#
+# Examples:
+#   ./stop_test.sh -n performance-test
+#   ./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
+
 usage()
 {
 	echo "Usage: ./stop_test.sh [-n <namespace>] [-R <release>] [-u]"
 	echo "  -n, --namespace   Namespace where jmeter-master pod is running (default: default)"
 	echo "  -R, --helm-release Helm release name for jmeter runtime (default: jmeter-runtime)"
 	echo "  -u, --helm-uninstall Uninstall helm release after stop test"
+	echo "     (建議日常僅 stoptest，不要每次 -u；避免在 Retain StorageClass 下累積 Released PV)"
 	exit 1
 }
 

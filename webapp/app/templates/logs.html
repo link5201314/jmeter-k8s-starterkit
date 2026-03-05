@@ -1,0 +1,546 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .yaml-preview mark {
+    background-color: var(--bs-warning-bg-subtle);
+  }
+  .yaml-preview mark.active-hit {
+    background-color: var(--bs-warning);
+    color: var(--bs-dark);
+  }
+  .log-readable {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    font-size: 0.9rem;
+    max-height: 68vh;
+  }
+</style>
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Logs</span>
+    <span class="text-muted small">切換分頁查看不同來源 logs</span>
+  </div>
+  <div class="card-body">
+    <ul class="nav nav-tabs mb-3" id="logsTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-start-log" data-bs-toggle="tab" data-bs-target="#pane-start-log" type="button" role="tab" aria-controls="pane-start-log" aria-selected="true">
+          start_test.sh 背景 Log
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-jmeter-log" data-bs-toggle="tab" data-bs-target="#pane-jmeter-log" type="button" role="tab" aria-controls="pane-jmeter-log" aria-selected="false">
+          JMeter Master/Slave Pod Logs
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="logsTabContent">
+      <div class="tab-pane fade show active" id="pane-start-log" role="tabpanel" aria-labelledby="tab-start-log" tabindex="0">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="start-log-auto-refresh">
+            <label class="form-check-label" for="start-log-auto-refresh">自動刷新</label>
+          </div>
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="start-log-auto-scroll" checked>
+            <label class="form-check-label" for="start-log-auto-scroll">自動捲到底</label>
+          </div>
+          <select id="start-log-interval" class="form-select form-select-sm" style="width: 110px;">
+            <option value="5">5 秒</option>
+            <option value="10" selected>10 秒</option>
+            <option value="30">30 秒</option>
+          </select>
+          <button id="start-log-clear" type="button" class="btn btn-sm btn-outline-secondary">清空</button>
+        </div>
+        <div class="btn-group btn-group-sm mb-3" role="group" aria-label="start log filter">
+          <button id="start-log-filter-all" type="button" class="btn btn-primary">全部</button>
+          <button id="start-log-filter-error" type="button" class="btn btn-outline-primary">ERROR</button>
+          <button id="start-log-filter-warn" type="button" class="btn btn-outline-primary">WARN</button>
+        </div>
+        <div class="input-group input-group-sm mb-3">
+          <input id="start-log-filter-keyword" class="form-control" placeholder="自訂關鍵字（例如 timeout）">
+          <button id="start-log-filter-custom" type="button" class="btn btn-outline-primary">套用</button>
+        </div>
+        <div class="text-muted small mb-3">快捷鍵：Enter 下一筆命中、Shift+Enter 上一筆命中</div>
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <button id="start-log-hit-prev" type="button" class="btn btn-sm btn-outline-secondary">上一筆</button>
+          <button id="start-log-hit-next" type="button" class="btn btn-sm btn-outline-secondary">下一筆</button>
+          <span id="start-log-hit-info" class="badge text-bg-light">命中 0/0</span>
+        </div>
+
+        <form id="start-log-form" class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label">行數</label>
+            <input id="start-log-lines" class="form-control" type="number" min="50" max="5000" value="300">
+          </div>
+          <div class="col-6 d-flex align-items-end">
+            <button class="btn btn-outline-primary w-100" type="submit">讀取</button>
+          </div>
+        </form>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span id="start-log-path" class="badge text-bg-light">webapp/logs/start_test.log</span>
+          <span id="start-log-updated" class="badge text-bg-secondary">尚未讀取</span>
+        </div>
+        <pre id="start-log-content" class="yaml-preview log-readable"># 點擊「讀取」載入 start_test.sh log</pre>
+      </div>
+
+      <div class="tab-pane fade" id="pane-jmeter-log" role="tabpanel" aria-labelledby="tab-jmeter-log" tabindex="0">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="jmeter-log-auto-refresh">
+            <label class="form-check-label" for="jmeter-log-auto-refresh">自動刷新</label>
+          </div>
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="jmeter-log-auto-scroll" checked>
+            <label class="form-check-label" for="jmeter-log-auto-scroll">自動捲到底</label>
+          </div>
+          <select id="jmeter-log-interval" class="form-select form-select-sm" style="width: 110px;">
+            <option value="5">5 秒</option>
+            <option value="10" selected>10 秒</option>
+            <option value="30">30 秒</option>
+          </select>
+          <button id="jmeter-log-clear" type="button" class="btn btn-sm btn-outline-secondary">清空</button>
+        </div>
+        <div class="btn-group btn-group-sm mb-3" role="group" aria-label="jmeter log filter">
+          <button id="jmeter-log-filter-all" type="button" class="btn btn-primary">全部</button>
+          <button id="jmeter-log-filter-error" type="button" class="btn btn-outline-primary">ERROR</button>
+          <button id="jmeter-log-filter-warn" type="button" class="btn btn-outline-primary">WARN</button>
+        </div>
+        <div class="input-group input-group-sm mb-3">
+          <input id="jmeter-log-filter-keyword" class="form-control" placeholder="自訂關鍵字（例如 Exception）">
+          <button id="jmeter-log-filter-custom" type="button" class="btn btn-outline-primary">套用</button>
+        </div>
+        <div class="text-muted small mb-3">快捷鍵：Enter 下一筆命中、Shift+Enter 上一筆命中</div>
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <button id="jmeter-log-hit-prev" type="button" class="btn btn-sm btn-outline-secondary">上一筆</button>
+          <button id="jmeter-log-hit-next" type="button" class="btn btn-sm btn-outline-secondary">下一筆</button>
+          <span id="jmeter-log-hit-info" class="badge text-bg-light">命中 0/0</span>
+        </div>
+
+        <form id="jmeter-log-form" class="row g-2 mb-3">
+          <div class="col-md-4">
+            <label class="form-label">Namespace</label>
+            <input id="jmeter-log-namespace" class="form-control" value="performance-test">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Target</label>
+            <select id="jmeter-log-target" class="form-select">
+              <option value="all">all</option>
+              <option value="master">master</option>
+              <option value="slave">slave</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">行數</label>
+            <input id="jmeter-log-lines" class="form-control" type="number" min="50" max="5000" value="300">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-outline-primary" type="submit">讀取 Pod Logs</button>
+            <span id="jmeter-log-updated" class="badge text-bg-secondary ms-2">尚未讀取</span>
+          </div>
+        </form>
+
+        <div id="jmeter-log-panels" class="vstack gap-3">
+          <div class="text-muted">尚未讀取</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const escapeHtml = (text) => text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+
+    const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const highlightText = (text, terms = []) => {
+      const safeText = escapeHtml(text || "");
+      const uniqueTerms = Array.from(new Set((terms || []).map((t) => (t || "").trim()).filter(Boolean)));
+      if (!uniqueTerms.length) return safeText;
+
+      let rendered = safeText;
+      for (const term of uniqueTerms) {
+        const re = new RegExp(`(${escapeRegExp(term)})`, "gi");
+        rendered = rendered.replace(re, "<mark>$1</mark>");
+      }
+      return rendered;
+    };
+
+    const nowTimeText = () => new Date().toLocaleString("zh-TW", { hour12: false });
+
+    const startLogForm = document.getElementById("start-log-form");
+    const startLogLines = document.getElementById("start-log-lines");
+    const startLogPath = document.getElementById("start-log-path");
+    const startLogUpdated = document.getElementById("start-log-updated");
+    const startLogContent = document.getElementById("start-log-content");
+    const startLogAutoRefresh = document.getElementById("start-log-auto-refresh");
+    const startLogAutoScroll = document.getElementById("start-log-auto-scroll");
+    const startLogInterval = document.getElementById("start-log-interval");
+    const startLogClear = document.getElementById("start-log-clear");
+    const startLogFilterAll = document.getElementById("start-log-filter-all");
+    const startLogFilterError = document.getElementById("start-log-filter-error");
+    const startLogFilterWarn = document.getElementById("start-log-filter-warn");
+    const startLogFilterKeyword = document.getElementById("start-log-filter-keyword");
+    const startLogFilterCustom = document.getElementById("start-log-filter-custom");
+    const startLogHitPrev = document.getElementById("start-log-hit-prev");
+    const startLogHitNext = document.getElementById("start-log-hit-next");
+    const startLogHitInfo = document.getElementById("start-log-hit-info");
+
+    let startLogTimer = null;
+    let startRawContent = "";
+    let startFilterMode = "all";
+    let startFilterKeyword = "";
+    let startHitIndex = -1;
+
+    function setFilterButtonState(allBtn, errorBtn, warnBtn, customBtn, mode) {
+      const setActive = (button, isActive) => {
+        if (!button) return;
+        button.classList.toggle("btn-primary", isActive);
+        button.classList.toggle("btn-outline-primary", !isActive);
+      };
+      setActive(allBtn, mode === "all");
+      setActive(errorBtn, mode === "error");
+      setActive(warnBtn, mode === "warn");
+      setActive(customBtn, mode === "custom");
+    }
+
+    function applyStartLogFilter() {
+      const lines = (startRawContent || "").split("\n");
+      let filtered = lines;
+      let highlightTerms = [];
+      if (startFilterMode === "error") {
+        filtered = lines.filter((line) => /error/i.test(line));
+        highlightTerms = ["error"];
+      } else if (startFilterMode === "warn") {
+        filtered = lines.filter((line) => /warn/i.test(line));
+        highlightTerms = ["warn"];
+      } else if (startFilterMode === "custom") {
+        const keyword = (startFilterKeyword || "").trim();
+        filtered = keyword ? lines.filter((line) => line.toLowerCase().includes(keyword.toLowerCase())) : lines;
+        highlightTerms = keyword ? [keyword] : [];
+      }
+
+      const filteredText = filtered.join("\n").trim();
+      if (!filteredText) {
+        startLogContent.textContent = "(無符合內容)";
+      } else {
+        startLogContent.innerHTML = highlightText(filteredText, highlightTerms);
+      }
+      startHitIndex = -1;
+      refreshHitNavigation(startLogContent, startLogHitInfo, "start", 0);
+      if (startLogAutoScroll?.checked) {
+        startLogContent.scrollTop = startLogContent.scrollHeight;
+      }
+    }
+
+    function refreshHitNavigation(container, infoEl, scope, delta) {
+      const marks = Array.from(container.querySelectorAll("mark"));
+      if (!marks.length) {
+        infoEl.textContent = "命中 0/0";
+        return;
+      }
+
+      if (scope === "start") {
+        if (startHitIndex < 0) startHitIndex = 0;
+        else startHitIndex = (startHitIndex + delta + marks.length) % marks.length;
+      } else {
+        if (jmeterHitIndex < 0) jmeterHitIndex = 0;
+        else jmeterHitIndex = (jmeterHitIndex + delta + marks.length) % marks.length;
+      }
+
+      const activeIndex = scope === "start" ? startHitIndex : jmeterHitIndex;
+      marks.forEach((mark, index) => {
+        mark.classList.toggle("active-hit", index === activeIndex);
+      });
+      marks[activeIndex].scrollIntoView({ block: "center", behavior: "smooth" });
+      infoEl.textContent = `命中 ${activeIndex + 1}/${marks.length}`;
+    }
+
+    async function loadStartLog() {
+      const lines = Number(startLogLines.value || 300);
+      startLogContent.textContent = "讀取中...";
+      startLogUpdated.className = "badge text-bg-warning";
+      startLogUpdated.textContent = "讀取中";
+
+      try {
+        const response = await fetch(`/api/logs/start-test?lines=${encodeURIComponent(lines)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        startLogPath.textContent = data.path || "webapp/logs/start_test.log";
+        startRawContent = data.content || "";
+        applyStartLogFilter();
+        startLogUpdated.className = "badge text-bg-success";
+        startLogUpdated.textContent = data.updated_at ? `已更新 ${data.updated_at}` : `已更新 ${nowTimeText()}`;
+      } catch (error) {
+        startRawContent = "";
+        startLogContent.textContent = `讀取失敗：${error.message}`;
+        startLogUpdated.className = "badge text-bg-danger";
+        startLogUpdated.textContent = `失敗 ${nowTimeText()}`;
+      }
+    }
+
+    function setupStartLogAutoRefresh() {
+      if (startLogTimer) {
+        clearInterval(startLogTimer);
+        startLogTimer = null;
+      }
+      if (!startLogAutoRefresh.checked) return;
+      const sec = Number(startLogInterval.value || 10);
+      startLogTimer = setInterval(loadStartLog, Math.max(2, sec) * 1000);
+    }
+
+    startLogForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await loadStartLog();
+    });
+
+    startLogAutoRefresh?.addEventListener("change", setupStartLogAutoRefresh);
+    startLogInterval?.addEventListener("change", setupStartLogAutoRefresh);
+    startLogFilterAll?.addEventListener("click", () => {
+      startFilterMode = "all";
+      setFilterButtonState(startLogFilterAll, startLogFilterError, startLogFilterWarn, startLogFilterCustom, startFilterMode);
+      applyStartLogFilter();
+    });
+    startLogFilterError?.addEventListener("click", () => {
+      startFilterMode = "error";
+      setFilterButtonState(startLogFilterAll, startLogFilterError, startLogFilterWarn, startLogFilterCustom, startFilterMode);
+      applyStartLogFilter();
+    });
+    startLogFilterWarn?.addEventListener("click", () => {
+      startFilterMode = "warn";
+      setFilterButtonState(startLogFilterAll, startLogFilterError, startLogFilterWarn, startLogFilterCustom, startFilterMode);
+      applyStartLogFilter();
+    });
+    const applyStartCustomFilter = () => {
+      startFilterKeyword = (startLogFilterKeyword?.value || "").trim();
+      startFilterMode = startFilterKeyword ? "custom" : "all";
+      setFilterButtonState(startLogFilterAll, startLogFilterError, startLogFilterWarn, startLogFilterCustom, startFilterMode);
+      applyStartLogFilter();
+    };
+    startLogFilterCustom?.addEventListener("click", applyStartCustomFilter);
+    startLogFilterKeyword?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyStartCustomFilter();
+        refreshHitNavigation(startLogContent, startLogHitInfo, "start", event.shiftKey ? -1 : 1);
+      }
+    });
+    startLogClear?.addEventListener("click", () => {
+      startRawContent = "";
+      startHitIndex = -1;
+      startLogContent.textContent = "(已清空畫面)";
+      startLogUpdated.className = "badge text-bg-secondary";
+      startLogUpdated.textContent = "已清空";
+      startLogHitInfo.textContent = "命中 0/0";
+    });
+    startLogHitPrev?.addEventListener("click", () => {
+      refreshHitNavigation(startLogContent, startLogHitInfo, "start", -1);
+    });
+    startLogHitNext?.addEventListener("click", () => {
+      refreshHitNavigation(startLogContent, startLogHitInfo, "start", 1);
+    });
+
+    const jmeterLogForm = document.getElementById("jmeter-log-form");
+    const jmeterLogNamespace = document.getElementById("jmeter-log-namespace");
+    const jmeterLogTarget = document.getElementById("jmeter-log-target");
+    const jmeterLogLines = document.getElementById("jmeter-log-lines");
+    const jmeterLogUpdated = document.getElementById("jmeter-log-updated");
+    const jmeterLogPanels = document.getElementById("jmeter-log-panels");
+    const jmeterLogAutoRefresh = document.getElementById("jmeter-log-auto-refresh");
+    const jmeterLogAutoScroll = document.getElementById("jmeter-log-auto-scroll");
+    const jmeterLogInterval = document.getElementById("jmeter-log-interval");
+    const jmeterLogClear = document.getElementById("jmeter-log-clear");
+    const jmeterLogFilterAll = document.getElementById("jmeter-log-filter-all");
+    const jmeterLogFilterError = document.getElementById("jmeter-log-filter-error");
+    const jmeterLogFilterWarn = document.getElementById("jmeter-log-filter-warn");
+    const jmeterLogFilterKeyword = document.getElementById("jmeter-log-filter-keyword");
+    const jmeterLogFilterCustom = document.getElementById("jmeter-log-filter-custom");
+    const jmeterLogHitPrev = document.getElementById("jmeter-log-hit-prev");
+    const jmeterLogHitNext = document.getElementById("jmeter-log-hit-next");
+    const jmeterLogHitInfo = document.getElementById("jmeter-log-hit-info");
+
+    let jmeterLogTimer = null;
+    let jmeterRawRows = [];
+    let jmeterFilterMode = "all";
+    let jmeterFilterKeyword = "";
+    let jmeterHitIndex = -1;
+
+    function applyJmeterLogFilter() {
+      const rows = Array.isArray(jmeterRawRows) ? jmeterRawRows : [];
+      const highlightTerms =
+        jmeterFilterMode === "error"
+          ? ["error"]
+          : jmeterFilterMode === "warn"
+            ? ["warn"]
+            : jmeterFilterMode === "custom" && (jmeterFilterKeyword || "").trim()
+              ? [jmeterFilterKeyword.trim()]
+              : [];
+
+      const matches = (content) => {
+        if (jmeterFilterMode === "error") return /error/i.test(content || "");
+        if (jmeterFilterMode === "warn") return /warn/i.test(content || "");
+        if (jmeterFilterMode === "custom") {
+          const keyword = (jmeterFilterKeyword || "").trim().toLowerCase();
+          return keyword ? (content || "").toLowerCase().includes(keyword) : true;
+        }
+        return true;
+      };
+
+      const filteredRows = rows.filter((entry) => matches(entry.content));
+      if (!filteredRows.length) {
+        jmeterLogPanels.innerHTML = '<div class="text-muted">無符合內容</div>';
+        jmeterHitIndex = -1;
+        jmeterLogHitInfo.textContent = "命中 0/0";
+        return;
+      }
+
+      jmeterLogPanels.innerHTML = filteredRows.map((entry) => `
+        <div>
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="badge text-bg-dark">${escapeHtml(entry.mode)} / ${escapeHtml(entry.pod)}</span>
+            <span class="badge text-bg-light">container: ${escapeHtml(entry.container)}</span>
+          </div>
+          <pre class="yaml-preview log-readable">${highlightText(entry.content || "(無內容)", highlightTerms)}</pre>
+        </div>
+      `).join("");
+
+      jmeterHitIndex = -1;
+      refreshHitNavigation(jmeterLogPanels, jmeterLogHitInfo, "jmeter", 0);
+
+      if (jmeterLogAutoScroll?.checked) {
+        const preBlocks = jmeterLogPanels.querySelectorAll("pre.yaml-preview");
+        preBlocks.forEach((block) => {
+          block.scrollTop = block.scrollHeight;
+        });
+      }
+    }
+
+    async function loadJmeterLogs() {
+      const ns = (jmeterLogNamespace.value || "performance-test").trim();
+      const target = jmeterLogTarget.value || "all";
+      const lines = Number(jmeterLogLines.value || 300);
+
+      jmeterLogPanels.innerHTML = '<div class="text-muted">讀取中...</div>';
+      jmeterLogUpdated.className = "badge text-bg-warning";
+      jmeterLogUpdated.textContent = "讀取中";
+
+      try {
+        const query = new URLSearchParams({ namespace: ns, target, lines: String(lines) });
+        const response = await fetch(`/api/logs/jmeter?${query.toString()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        jmeterRawRows = data.logs || [];
+        if (!jmeterRawRows.length) {
+          jmeterLogPanels.innerHTML = '<div class="text-muted">查無可讀取 Pod log</div>';
+        } else {
+          applyJmeterLogFilter();
+        }
+
+        jmeterLogUpdated.className = "badge text-bg-success";
+        jmeterLogUpdated.textContent = `已更新 ${nowTimeText()}`;
+      } catch (error) {
+        jmeterRawRows = [];
+        jmeterLogPanels.innerHTML = `<div class="text-danger">讀取失敗：${escapeHtml(error.message)}</div>`;
+        jmeterLogUpdated.className = "badge text-bg-danger";
+        jmeterLogUpdated.textContent = `失敗 ${nowTimeText()}`;
+      }
+    }
+
+    function setupJmeterLogAutoRefresh() {
+      if (jmeterLogTimer) {
+        clearInterval(jmeterLogTimer);
+        jmeterLogTimer = null;
+      }
+      if (!jmeterLogAutoRefresh.checked) return;
+      const sec = Number(jmeterLogInterval.value || 10);
+      jmeterLogTimer = setInterval(loadJmeterLogs, Math.max(2, sec) * 1000);
+    }
+
+    jmeterLogForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await loadJmeterLogs();
+    });
+
+    jmeterLogAutoRefresh?.addEventListener("change", setupJmeterLogAutoRefresh);
+    jmeterLogInterval?.addEventListener("change", setupJmeterLogAutoRefresh);
+    jmeterLogFilterAll?.addEventListener("click", () => {
+      jmeterFilterMode = "all";
+      setFilterButtonState(jmeterLogFilterAll, jmeterLogFilterError, jmeterLogFilterWarn, jmeterLogFilterCustom, jmeterFilterMode);
+      applyJmeterLogFilter();
+    });
+    jmeterLogFilterError?.addEventListener("click", () => {
+      jmeterFilterMode = "error";
+      setFilterButtonState(jmeterLogFilterAll, jmeterLogFilterError, jmeterLogFilterWarn, jmeterLogFilterCustom, jmeterFilterMode);
+      applyJmeterLogFilter();
+    });
+    jmeterLogFilterWarn?.addEventListener("click", () => {
+      jmeterFilterMode = "warn";
+      setFilterButtonState(jmeterLogFilterAll, jmeterLogFilterError, jmeterLogFilterWarn, jmeterLogFilterCustom, jmeterFilterMode);
+      applyJmeterLogFilter();
+    });
+    const applyJmeterCustomFilter = () => {
+      jmeterFilterKeyword = (jmeterLogFilterKeyword?.value || "").trim();
+      jmeterFilterMode = jmeterFilterKeyword ? "custom" : "all";
+      setFilterButtonState(jmeterLogFilterAll, jmeterLogFilterError, jmeterLogFilterWarn, jmeterLogFilterCustom, jmeterFilterMode);
+      applyJmeterLogFilter();
+    };
+    jmeterLogFilterCustom?.addEventListener("click", applyJmeterCustomFilter);
+    jmeterLogFilterKeyword?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyJmeterCustomFilter();
+        refreshHitNavigation(jmeterLogPanels, jmeterLogHitInfo, "jmeter", event.shiftKey ? -1 : 1);
+      }
+    });
+    jmeterLogClear?.addEventListener("click", () => {
+      jmeterRawRows = [];
+      jmeterHitIndex = -1;
+      jmeterLogPanels.innerHTML = '<div class="text-muted">(已清空畫面)</div>';
+      jmeterLogUpdated.className = "badge text-bg-secondary";
+      jmeterLogUpdated.textContent = "已清空";
+      jmeterLogHitInfo.textContent = "命中 0/0";
+    });
+    jmeterLogHitPrev?.addEventListener("click", () => {
+      refreshHitNavigation(jmeterLogPanels, jmeterLogHitInfo, "jmeter", -1);
+    });
+    jmeterLogHitNext?.addEventListener("click", () => {
+      refreshHitNavigation(jmeterLogPanels, jmeterLogHitInfo, "jmeter", 1);
+    });
+
+    const tabStart = document.getElementById("tab-start-log");
+    const tabJmeter = document.getElementById("tab-jmeter-log");
+    const paneStart = document.getElementById("pane-start-log");
+    const paneJmeter = document.getElementById("pane-jmeter-log");
+
+    function activateTab(tabName) {
+      const startActive = tabName === "start";
+      tabStart?.classList.toggle("active", startActive);
+      tabJmeter?.classList.toggle("active", !startActive);
+
+      if (paneStart) {
+        paneStart.classList.toggle("show", startActive);
+        paneStart.classList.toggle("active", startActive);
+      }
+      if (paneJmeter) {
+        paneJmeter.classList.toggle("show", !startActive);
+        paneJmeter.classList.toggle("active", !startActive);
+      }
+    }
+
+    tabStart?.addEventListener("click", () => activateTab("start"));
+    tabJmeter?.addEventListener("click", () => activateTab("jmeter"));
+    activateTab("start");
+
+    setFilterButtonState(startLogFilterAll, startLogFilterError, startLogFilterWarn, startLogFilterCustom, startFilterMode);
+    setFilterButtonState(jmeterLogFilterAll, jmeterLogFilterError, jmeterLogFilterWarn, jmeterLogFilterCustom, jmeterFilterMode);
+  })();
+</script>
+{% endblock %}

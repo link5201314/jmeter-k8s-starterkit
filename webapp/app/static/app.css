@@ -1,0 +1,53 @@
+body {
+  background-color: #f5f7fb;
+}
+
+.card {
+  border: 1px solid #e8edf3;
+}
+
+.card-header {
+  font-weight: 600;
+}
+
+.yaml-preview-wrapper {
+  border: 1px solid #e8edf3;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background-color: #fbfcff;
+}
+
+.yaml-preview {
+  margin: 0;
+  max-height: 340px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.yaml-key {
+  color: #93c5fd;
+}
+
+.yaml-string {
+  color: #86efac;
+}
+
+.yaml-number {
+  color: #fca5a5;
+}
+
+.yaml-bool {
+  color: #fcd34d;
+}
+
+.yaml-comment {
+  color: #94a3b8;
+  font-style: italic;
+}

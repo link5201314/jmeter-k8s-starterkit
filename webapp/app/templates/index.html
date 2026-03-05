@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="p-4 bg-white rounded-3 border shadow-sm">
+  <h3 class="mb-3">JMeter 分佈式測試管理平台（雛型）</h3>
+  <p class="text-muted mb-3">本頁面提供測試驅動、設定管理、專案檔管理、Dataset 上傳與報告下載。</p>
+  <div class="row g-3">
+    {% if can_drive_tests %}
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/tests">測試驅動</a></div>
+    {% endif %}
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/configs">設定管理</a></div>
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/projects">專案管理</a></div>
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/datasets">Dataset</a></div>
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/reports">報告</a></div>
+    {% if can_manage_users %}
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/users">使用者管理</a></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

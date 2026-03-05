@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+# Purpose:
+#   重置 jmeter-data-dir PVC（可選擇重建 runtime，並在需要時恢復 report-server）。
+#
+# Examples:
+#   ./reset_pvc.sh -n performance-test -r jmeter-runtime -p jmeter-data-dir-pvc
+#   ./reset_pvc.sh -n performance-test -r jmeter-runtime -p jmeter-data-dir-pvc --recreate-runtime --restore-report-server
+
 set -euo pipefail
 
 log() {

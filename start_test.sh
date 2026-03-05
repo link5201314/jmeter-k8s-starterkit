@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+# Purpose:
+#   啟動 JMeter 分散式測試（建立/更新 runtime、同步 scenario、啟動 master/slave）。
+#
+# Examples:
+#   ./start_test.sh -j demoweb.jmx -n performance-test -i 2 -c -m -r --helm-env lab --helm-release jmeter-runtime
+#   ./start_test.sh -j demoweb.jmx -n performance-test -i 20 -c -m -r -E prod -V "tip-web=1.0.1;gemfire=2.2.3" -N "baseline"
+
 #=== FUNCTION ================================================================
 #        NAME: logit
 # DESCRIPTION: Log into file and screen.
@@ -300,8 +307,14 @@ kubectl -n "${namespace}" delete job jmeter-master jmeter-slaves --ignore-not-fo
 
 helm_cmd=(
     helm upgrade --install "${helm_release}" "${helm_chart_path}"
-    -n "${namespace}" --create-namespace
+    -n "${namespace}"
 )
+
+if [ "$(kubectl auth can-i create namespaces 2>/dev/null || echo no)" = "yes" ]; then
+    helm_cmd+=( --create-namespace )
+else
+    logit "INFO" "No permission to create namespaces (or not needed); skip --create-namespace"
+fi
 
 if [ -f "${helm_env_file}" ]; then
     logit "INFO" "Using helm environment values: ${helm_env_file}"

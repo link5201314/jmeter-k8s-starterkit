@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-header">網站登入</div>
+      <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger py-2">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/login" class="row g-3">
+          <div class="col-12">
+            <label class="form-label">帳號</label>
+            <input class="form-control" name="username" required autofocus>
+          </div>
+          <div class="col-12">
+            <label class="form-label">密碼</label>
+            <input class="form-control" name="password" type="password" required>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary w-100" type="submit">登入</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

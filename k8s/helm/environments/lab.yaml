@@ -20,3 +20,15 @@ cleaner:
   enabled: true
   image:
     tag: "latest"
+  cronjob:
+    cleanupDelaySeconds: 30
+
+webapp:
+  enabled: true
+  image:
+    repository: docker.io/isaac0815/jmeter-webapp
+    tag: "latest"
+    pullPolicy: Always
+    useGlobalRegistry: false
+  ingress:
+    host: jmeter-web.example.com

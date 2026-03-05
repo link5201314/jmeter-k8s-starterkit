@@ -12,3 +12,4 @@ cronjob:
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
+  cleanupDelaySeconds: 30

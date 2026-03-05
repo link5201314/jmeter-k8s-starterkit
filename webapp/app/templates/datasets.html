@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header">上傳 CSV dataset</div>
+  <div class="card-body">
+    <form method="post" action="/api/datasets/upload" enctype="multipart/form-data" class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label mb-1">專案名稱</label>
+        <select class="form-select" name="project" id="dataset-project-select" onchange="window.location.href='/datasets?project=' + encodeURIComponent(this.value)">
+          <option value="Others" {{ 'selected' if selected_project == 'Others' else '' }}>Others</option>
+          {% for p in projects %}
+          <option value="{{ p }}" {{ 'selected' if selected_project == p else '' }}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5"><label class="form-label mb-1">CSV 檔案</label><input class="form-control" type="file" name="file" accept=".csv" required></div>
+      <div class="col-md-3"><label class="form-label mb-1 d-block">&nbsp;</label><button class="btn btn-primary w-100">上傳</button></div>
+      <div class="col-12">
+        {% if selected_project == 'Others' %}
+        <div class="form-text mb-2">目前選擇 Others：上傳檔名不受前綴限制。</div>
+        <div class="form-text mb-2">建議檔名範例：custom-dataset.csv</div>
+        {% else %}
+        <div class="form-text mb-2">目前選擇 {{ selected_project }}：上傳檔名需以 {{ selected_project }}_ 開頭。</div>
+        <div class="form-text mb-2">建議檔名範例：{{ selected_project }}_login-user.csv</div>
+        {% endif %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="confirm_overwrite" id="confirm-overwrite-dataset">
+          <label class="form-check-label" for="confirm-overwrite-dataset">同檔名時確認覆蓋</label>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>目前 dataset 清單（{{ selected_project }}）</span>
+    <a href="/api/datasets/download-zip?project={{ selected_project }}" class="btn btn-sm btn-outline-primary">下載目前專案 ZIP</a>
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for f in datasets %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <a href="/datasets?project={{ selected_project }}&file={{ f }}" class="text-decoration-none {{ 'fw-semibold' if selected_dataset == f else '' }}">{{ f }}</a>
+      <div class="d-flex gap-2">
+        <a href="/api/datasets/download?name={{ f }}" class="btn btn-sm btn-outline-primary">下載</a>
+        <a href="/datasets?project={{ selected_project }}&file={{ f }}" class="btn btn-sm btn-outline-secondary">瀏覽</a>
+      </div>
+    </li>
+    {% else %}
+    <li class="list-group-item text-muted">尚無 CSV 檔案</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="card shadow-sm mt-4">
+  <div class="card-header">CSV 內容預覽{% if selected_dataset %}：{{ selected_dataset }}{% endif %}</div>
+  <div class="card-body">
+    {% if preview_error %}
+      <div class="alert alert-warning mb-0">{{ preview_error }}</div>
+    {% elif selected_dataset and preview_headers %}
+      <div class="row g-2 mb-3">
+        <div class="col-md-6">
+          <input id="csv-filter-input" class="form-control" placeholder="關鍵字搜尋（前端過濾目前預覽列）" />
+        </div>
+        <div class="col-md-6 text-md-end">
+          <span id="csv-filter-count" class="text-muted"></span>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table id="csv-preview-table" class="table table-sm table-striped table-bordered">
+          <thead>
+            <tr>
+              {% for h in preview_headers %}
+              <th>{{ h }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview_rows %}
+            <tr>
+              {% for cell in row %}
+              <td>{{ cell }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if preview_truncated %}
+      <div class="text-muted">僅顯示前 200 筆資料列。</div>
+      {% endif %}
+    {% elif selected_dataset %}
+      <div class="text-muted">此檔案沒有可顯示的內容。</div>
+    {% else %}
+      <div class="text-muted">請先從上方清單點選一個 CSV 檔案。</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  (function () {
+    const input = document.getElementById('csv-filter-input');
+    const table = document.getElementById('csv-preview-table');
+    const counter = document.getElementById('csv-filter-count');
+    if (!input || !table) return;
+
+    const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+
+    const updateCounter = () => {
+      if (!counter) return;
+      const visible = bodyRows.filter((row) => row.style.display !== 'none').length;
+      counter.textContent = `顯示 ${visible} / ${bodyRows.length} 筆`;
+    };
+
+    const normalize = (text) => (text || '').toLowerCase().trim();
+
+    input.addEventListener('input', () => {
+      const keyword = normalize(input.value);
+      for (const row of bodyRows) {
+        const rowText = normalize(row.textContent);
+        row.style.display = !keyword || rowText.includes(keyword) ? '' : 'none';
+      }
+      updateCounter();
+    });
+
+    updateCounter();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">上傳 JMX</div>
+      <div class="card-body">
+        <form id="jmx-upload-form" method="post" action="/api/projects/upload-jmx" enctype="multipart/form-data">
+          <div class="mb-2">
+            <label class="form-label">專案</label>
+            <select id="jmx-upload-project" class="form-select" name="project" required>
+              {% for p in projects %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2"><input id="jmx-upload-file" class="form-control" type="file" name="file" accept=".jmx" required></div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="confirm_overwrite" id="confirm-overwrite-jmx" value="true">
+            <label class="form-check-label" for="confirm-overwrite-jmx">同檔名時確認覆蓋</label>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button id="jmx-upload-btn" class="btn btn-primary">上傳</button>
+            <span id="jmx-upload-state" class="badge text-bg-secondary">待上傳</span>
+          </div>
+        </form>
+
+        <hr>
+
+        <form id="jmx-read-form" class="row g-2 mb-2">
+          <div class="col-8">
+            <select id="jmx-read-project" class="form-select" required>
+              {% for p in projects %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-4"><button type="submit" class="btn btn-outline-primary w-100">讀取</button></div>
+        </form>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold">JMX 檔案清單</span>
+          <span id="jmx-read-at" class="badge text-bg-secondary">尚未讀取</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead>
+              <tr>
+                <th>檔名</th>
+                <th>大小</th>
+                <th>最後修改</th>
+                <th>MD5</th>
+                <th>下載</th>
+              </tr>
+            </thead>
+            <tbody id="jmx-table-body">
+              <tr><td colspan="5" class="text-muted text-center">請點擊「讀取」載入清單</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">編輯 .env</div>
+      <div class="card-body">
+        <form id="env-read-form" class="row g-2 mb-3">
+          <div class="col-8">
+            <select id="env-read-project" class="form-select" name="project" required>
+              {% for p in projects %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-4"><button type="submit" class="btn btn-outline-primary w-100">讀取</button></div>
+        </form>
+
+        <div class="yaml-preview-wrapper mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">內容預覽</span>
+            <div class="d-flex align-items-center gap-2">
+              <span id="env-preview-read-at" class="badge text-bg-secondary">尚未讀取</span>
+              <button id="env-copy-btn" type="button" class="btn btn-sm btn-outline-secondary">複製</button>
+              <button id="env-download-btn" type="button" class="btn btn-sm btn-outline-secondary">下載</button>
+              <span id="env-preview-filename" class="badge text-bg-light">尚未讀取</span>
+            </div>
+          </div>
+          <pre id="env-preview" class="yaml-preview"># 點擊「讀取」載入 .env</pre>
+        </div>
+
+        <form id="env-save-form" method="post" action="/api/projects/env">
+          <div class="mb-2">
+            <select id="env-save-project" class="form-select" name="project" required>
+              {% for p in projects %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2"><textarea id="env-save-content" class="form-control font-monospace" name="content" rows="8"></textarea></div>
+          <div class="d-flex align-items-center gap-2">
+            <button id="env-save-btn" class="btn btn-primary">儲存 .env</button>
+            <span id="env-save-state" class="badge text-bg-secondary">尚未載入</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">編輯 report-meta.env</div>
+      <div class="card-body">
+        <form id="meta-read-form" class="row g-2 mb-3">
+          <div class="col-8">
+            <select id="meta-read-project" class="form-select" name="project" required>
+              {% for p in projects %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-4"><button type="submit" class="btn btn-outline-primary w-100">讀取</button></div>
+        </form>
+
+        <div class="yaml-preview-wrapper mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">內容預覽</span>
+            <div class="d-flex align-items-center gap-2">
+              <span id="meta-preview-read-at" class="badge text-bg-secondary">尚未讀取</span>
+              <button id="meta-copy-btn" type="button" class="btn btn-sm btn-outline-secondary">複製</button>
+              <button id="meta-download-btn" type="button" class="btn btn-sm btn-outline-secondary">下載</button>
+              <span id="meta-preview-filename" class="badge text-bg-light">尚未讀取</span>
+            </div>
+          </div>
+          <pre id="meta-preview" class="yaml-preview"># 點擊「讀取」載入 report-meta.env</pre>
+        </div>
+
+        <form id="meta-save-form" method="post" action="/api/projects/report-meta">
+          <div class="mb-2">
+            <select id="meta-save-project" class="form-select" name="project" required>
+              {% for p in projects %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2"><textarea id="meta-save-content" class="form-control font-monospace" name="content" rows="8"></textarea></div>
+          <div class="d-flex align-items-center gap-2">
+            <button id="meta-save-btn" class="btn btn-primary">儲存 report-meta.env</button>
+            <span id="meta-save-state" class="badge text-bg-secondary">尚未載入</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const nowTimeText = () => new Date().toLocaleString("zh-TW", { hour12: false });
+    const escapeHtml = (text) => text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+
+    function setupPlainEditor(opts) {
+      const readForm = document.getElementById(opts.readFormId);
+      const readField = document.getElementById(opts.readFieldId);
+      const preview = document.getElementById(opts.previewId);
+      const previewFilename = document.getElementById(opts.previewFilenameId);
+      const previewReadAt = document.getElementById(opts.previewReadAtId);
+      const saveForm = document.getElementById(opts.saveFormId);
+      const saveField = document.getElementById(opts.saveFieldId);
+      const saveContent = document.getElementById(opts.saveContentId);
+      const saveBtn = document.getElementById(opts.saveBtnId);
+      const saveState = document.getElementById(opts.saveStateId);
+      const copyBtn = document.getElementById(opts.copyBtnId);
+      const downloadBtn = document.getElementById(opts.downloadBtnId);
+
+      let currentContent = "";
+      let baselineField = "";
+      let baselineContent = "";
+
+      const setSaveState = (className, text) => {
+        saveState.className = `badge ${className}`;
+        saveState.textContent = text;
+      };
+
+      const setReadState = (className, text) => {
+        previewReadAt.className = `badge ${className}`;
+        previewReadAt.textContent = text;
+      };
+
+      const refreshDirty = () => {
+        if (!baselineField && !baselineContent && !saveField.value && !saveContent.value) {
+          setSaveState("text-bg-secondary", "尚未載入");
+          return;
+        }
+        const dirty = (saveField.value || "") !== baselineField || (saveContent.value || "") !== baselineContent;
+        setSaveState(dirty ? "text-bg-warning" : "text-bg-success", dirty ? "尚未儲存變更" : "已同步");
+      };
+
+      readForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const project = readField.value;
+        preview.textContent = "讀取中...";
+        previewFilename.textContent = `${project}/${opts.filename}`;
+        setReadState("text-bg-warning", "讀取中");
+
+        try {
+          const response = await fetch(`${opts.readApi}?project=${encodeURIComponent(project)}`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+
+          const content = data.content ?? "";
+          currentContent = content;
+          preview.innerHTML = escapeHtml(content || "");
+          saveField.value = data.project || project;
+          saveContent.value = content;
+          baselineField = saveField.value;
+          baselineContent = content;
+          refreshDirty();
+          setReadState("text-bg-success", `已更新 ${nowTimeText()}`);
+        } catch (error) {
+          preview.textContent = `讀取失敗：${error.message}`;
+          setReadState("text-bg-danger", `失敗 ${nowTimeText()}`);
+        }
+      });
+
+      saveField?.addEventListener("input", refreshDirty);
+      saveContent?.addEventListener("input", refreshDirty);
+
+      saveForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const project = (saveField.value || "").trim();
+        const content = saveContent.value || "";
+        if (!project) {
+          setSaveState("text-bg-danger", "專案不可為空");
+          return;
+        }
+
+        saveBtn.disabled = true;
+        setSaveState("text-bg-info", "儲存中...");
+
+        try {
+          const body = new URLSearchParams({ project, content });
+          const response = await fetch(opts.saveApi, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+            body: body.toString()
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+          baselineField = project;
+          baselineContent = content;
+          refreshDirty();
+          setSaveState("text-bg-success", `已儲存 ${nowTimeText()}`);
+        } catch (error) {
+          setSaveState("text-bg-danger", `儲存失敗：${error.message}`);
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+
+      copyBtn?.addEventListener("click", async () => {
+        const content = currentContent || saveContent.value || "";
+        if (!content) {
+          copyBtn.textContent = "無內容";
+          setTimeout(() => { copyBtn.textContent = "複製"; }, 1200);
+          return;
+        }
+
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(content);
+          } else {
+            saveContent.focus();
+            saveContent.select();
+            document.execCommand("copy");
+          }
+          copyBtn.textContent = "已複製";
+        } catch (_error) {
+          copyBtn.textContent = "失敗";
+        } finally {
+          setTimeout(() => { copyBtn.textContent = "複製"; }, 1200);
+        }
+      });
+
+      downloadBtn?.addEventListener("click", () => {
+        const content = currentContent || saveContent.value || "";
+        if (!content) {
+          downloadBtn.textContent = "無內容";
+          setTimeout(() => { downloadBtn.textContent = "下載"; }, 1200);
+          return;
+        }
+
+        const project = (saveField.value || readField.value || "project").trim();
+        const filename = `${project}-${opts.filename}`;
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+
+        downloadBtn.textContent = "已下載";
+        setTimeout(() => { downloadBtn.textContent = "下載"; }, 1200);
+      });
+    }
+
+    setupPlainEditor({
+      readFormId: "env-read-form",
+      readFieldId: "env-read-project",
+      previewId: "env-preview",
+      previewFilenameId: "env-preview-filename",
+      previewReadAtId: "env-preview-read-at",
+      saveFormId: "env-save-form",
+      saveFieldId: "env-save-project",
+      saveContentId: "env-save-content",
+      saveBtnId: "env-save-btn",
+      saveStateId: "env-save-state",
+      copyBtnId: "env-copy-btn",
+      downloadBtnId: "env-download-btn",
+      readApi: "/api/projects/env",
+      saveApi: "/api/projects/env",
+      filename: ".env"
+    });
+
+    setupPlainEditor({
+      readFormId: "meta-read-form",
+      readFieldId: "meta-read-project",
+      previewId: "meta-preview",
+      previewFilenameId: "meta-preview-filename",
+      previewReadAtId: "meta-preview-read-at",
+      saveFormId: "meta-save-form",
+      saveFieldId: "meta-save-project",
+      saveContentId: "meta-save-content",
+      saveBtnId: "meta-save-btn",
+      saveStateId: "meta-save-state",
+      copyBtnId: "meta-copy-btn",
+      downloadBtnId: "meta-download-btn",
+      readApi: "/api/projects/report-meta",
+      saveApi: "/api/projects/report-meta",
+      filename: "report-meta.env"
+    });
+
+    const jmxUploadForm = document.getElementById("jmx-upload-form");
+    const jmxUploadBtn = document.getElementById("jmx-upload-btn");
+    const jmxUploadState = document.getElementById("jmx-upload-state");
+    const jmxUploadProject = document.getElementById("jmx-upload-project");
+    const jmxUploadFile = document.getElementById("jmx-upload-file");
+    const jmxReadForm = document.getElementById("jmx-read-form");
+    const jmxReadProject = document.getElementById("jmx-read-project");
+    const jmxReadAt = document.getElementById("jmx-read-at");
+    const jmxTableBody = document.getElementById("jmx-table-body");
+
+    const formatSize = (bytes) => {
+      if (bytes < 1024) return `${bytes} B`;
+      const kb = bytes / 1024;
+      if (kb < 1024) return `${kb.toFixed(1)} KB`;
+      const mb = kb / 1024;
+      return `${mb.toFixed(2)} MB`;
+    };
+
+    const setJmxReadState = (className, text) => {
+      jmxReadAt.className = `badge ${className}`;
+      jmxReadAt.textContent = text;
+    };
+
+    async function loadJmxList(project) {
+      jmxTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">讀取中...</td></tr>';
+      setJmxReadState("text-bg-warning", "讀取中");
+
+      try {
+        const response = await fetch(`/api/projects/jmx?project=${encodeURIComponent(project)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const files = data.files || [];
+
+        if (!files.length) {
+          jmxTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">無 jmx 檔案</td></tr>';
+        } else {
+          jmxTableBody.innerHTML = files.map((item) => {
+            const downloadUrl = `/api/projects/download-jmx?project=${encodeURIComponent(project)}&name=${encodeURIComponent(item.name)}`;
+            return `
+              <tr>
+                <td>${escapeHtml(item.name)}</td>
+                <td>${formatSize(item.size)}</td>
+                <td>${escapeHtml(item.modified_at)}</td>
+                <td><code>${escapeHtml(item.md5)}</code></td>
+                <td><a class="btn btn-sm btn-outline-primary" href="${downloadUrl}">下載</a></td>
+              </tr>
+            `;
+          }).join("");
+        }
+        setJmxReadState("text-bg-success", `已更新 ${nowTimeText()}`);
+      } catch (error) {
+        jmxTableBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">讀取失敗：${escapeHtml(error.message)}</td></tr>`;
+        setJmxReadState("text-bg-danger", `失敗 ${nowTimeText()}`);
+      }
+    }
+
+    jmxReadForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const project = jmxReadProject.value;
+      await loadJmxList(project);
+    });
+
+    jmxUploadForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const project = jmxUploadProject.value;
+      if (!jmxUploadFile.files?.length) {
+        jmxUploadState.className = "badge text-bg-danger";
+        jmxUploadState.textContent = "請先選擇檔案";
+        return;
+      }
+
+      jmxUploadBtn.disabled = true;
+      jmxUploadState.className = "badge text-bg-info";
+      jmxUploadState.textContent = "上傳中...";
+
+      try {
+        const formData = new FormData(jmxUploadForm);
+        const response = await fetch("/api/projects/upload-jmx", { method: "POST", body: formData });
+        if (!response.ok) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const errData = await response.json();
+            detail = errData.detail || detail;
+          } catch (_error) {
+            detail = `HTTP ${response.status}`;
+          }
+          throw new Error(detail);
+        }
+
+        jmxUploadState.className = "badge text-bg-success";
+        jmxUploadState.textContent = `已上傳 ${nowTimeText()}`;
+        jmxReadProject.value = project;
+        await loadJmxList(project);
+      } catch (error) {
+        jmxUploadState.className = "badge text-bg-danger";
+        jmxUploadState.textContent = `上傳失敗：${error.message}`;
+      } finally {
+        jmxUploadBtn.disabled = false;
+      }
+    });
+  })();
+</script>
+{% endblock %}

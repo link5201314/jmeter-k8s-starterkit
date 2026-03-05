@@ -36,6 +36,8 @@ cleaner:
   image:
     repository: bitnami/kubectl
     tag: "1.31.0"
+  cronjob:
+    cleanupDelaySeconds: 30
 
 report-server:
   image:
@@ -60,3 +62,13 @@ grafana:
     tag: "7.3.3"
   ingress:
     host: grafana.dr-prod.example.com
+
+webapp:
+  enabled: true
+  image:
+    repository: docker.io/isaac0815/jmeter-webapp
+    tag: "latest"
+    pullPolicy: Always
+    useGlobalRegistry: false
+  ingress:
+    host: jmeter-web.dr-prod.example.com

@@ -39,6 +39,7 @@ data:
     #!/bin/sh
     set -x 
     NS="${POD_NAMESPACE:-default}"
+    DELAY_SECONDS={{ .Values.cronjob.cleanupDelaySeconds | default 30 }}
     master_done_count=$(kubectl -n "$NS" get pod -l jmeter_mode=master \
       -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -c '^Succeeded$' || true)
 
@@ -46,6 +47,17 @@ data:
       -o jsonpath='{.items[*].metadata.name}' | wc -w | tr -d ' ')    
 
     if [ "$master_total_count" -gt 0 ] && [ "$master_done_count" -eq "$master_total_count" ]; then
+      finished_at=$(kubectl -n "$NS" get pod -l jmeter_mode=master \
+        -o jsonpath='{.items[0].status.containerStatuses[0].state.terminated.finishedAt}')
+      if [ -n "$finished_at" ]; then
+        finished_epoch=$(date -u -d "$finished_at" +%s 2>/dev/null || echo 0)
+        now_epoch=$(date -u +%s)
+        elapsed=$((now_epoch - finished_epoch))
+        if [ "$elapsed" -lt "$DELAY_SECONDS" ]; then
+          echo "[INFO] cleaner delay not reached yet (${elapsed}s/${DELAY_SECONDS}s), skip this run"
+          exit 0
+        fi
+      fi
       kubectl -n "$NS" delete jobs --selector jmeter_mode=slave 
       kubectl -n "$NS" delete jobs --selector jmeter_mode=master
     fi

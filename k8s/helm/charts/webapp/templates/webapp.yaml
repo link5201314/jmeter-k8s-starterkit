@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jmeter-webapp
+  labels:
+    app: jmeter-webapp
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: jmeter-webapp
+  template:
+    metadata:
+      labels:
+        app: jmeter-webapp
+    spec:
+      serviceAccountName: jmeter-webapp
+{{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+{{- end }}
+{{- end }}
+{{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+{{- end }}
+      containers:
+        - name: webapp
+          image: "{{- if and .Values.image.useGlobalRegistry .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          volumeMounts:
+            - name: jmeter-data-dir
+              mountPath: {{ .Values.reportPvc.mountPath }}
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+      volumes:
+        - name: jmeter-data-dir
+          persistentVolumeClaim:
+            claimName: {{ .Values.reportPvc.claimName }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jmeter-webapp
+spec:
+  selector:
+    app: jmeter-webapp
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}

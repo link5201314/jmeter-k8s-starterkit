@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header">啟動測試</div>
+  <div class="card-body">
+    <form method="post" action="/api/tests/start" class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">專案</label>
+        <select class="form-select" name="project" required>
+          {% for p in projects %}
+          <option value="{{ p }}">{{ p }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">自動使用 <code>專案名.jmx</code> 作為測試腳本</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Namespace</label>
+        <input class="form-control" name="namespace" value="performance-test">
+      </div>
+      <div class="col-md-4"></div>
+      <div class="col-md-3">
+        <label class="form-label">Injectors</label>
+        <input class="form-control" type="number" name="injectors" value="2" min="1">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Helm Env</label>
+        <input class="form-control" name="helm_env" value="lab">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Helm Release</label>
+        <input class="form-control" name="helm_release" value="jmeter-runtime">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="copy_csv" checked> CSV</div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="copy_module"> Module</div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="enable_report" checked> Report</div>
+        </div>
+      </div>
+      <div class="col-12"><button class="btn btn-primary">啟動測試</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">停止測試</div>
+  <div class="card-body">
+    <form method="post" action="/api/tests/stop" class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Namespace</label>
+        <input class="form-control" name="namespace" value="performance-test">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Helm Release</label>
+        <input class="form-control" name="helm_release" value="jmeter-runtime">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="uninstall_runtime"> 卸載 runtime</div>
+      </div>
+      <div class="col-12"><button class="btn btn-danger">停止測試</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-secondary mb-0">
+  目前背景狀態可呼叫：<a href="/api/tests/status" target="_blank">/api/tests/status</a>
+</div>
+
+<div class="card shadow-sm mt-4">
+  <div class="card-header">測試執行狀態</div>
+  <div class="card-body">
+    <form id="runtime-status-form" class="row g-2 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Namespace</label>
+        <input id="runtime-namespace" class="form-control" value="performance-test">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary w-100">立即更新</button>
+      </div>
+      <div class="col-md-5 d-flex align-items-end">
+        <span id="runtime-updated-at" class="badge text-bg-secondary">尚未讀取</span>
+      </div>
+    </form>
+
+    <div id="runtime-summary" class="alert alert-secondary py-2 mb-3">尚未讀取</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <tbody>
+          <tr><th style="width: 220px;">start_test 背景程序</th><td id="runtime-start-job">-</td></tr>
+          <tr><th>stop_test 背景程序</th><td id="runtime-stop-job">-</td></tr>
+          <tr><th>master job (active/succeeded/failed)</th><td id="runtime-master-job">-</td></tr>
+          <tr><th>slave job active</th><td id="runtime-slave-job">-</td></tr>
+          <tr><th>master pod</th><td id="runtime-master-pod">-</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-2 text-muted small">本區每 10 秒自動更新一次，也可手動更新。</div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const form = document.getElementById("runtime-status-form");
+    const nsInput = document.getElementById("runtime-namespace");
+    const updatedAt = document.getElementById("runtime-updated-at");
+    const summary = document.getElementById("runtime-summary");
+    const startJob = document.getElementById("runtime-start-job");
+    const stopJob = document.getElementById("runtime-stop-job");
+    const masterJob = document.getElementById("runtime-master-job");
+    const slaveJob = document.getElementById("runtime-slave-job");
+    const masterPod = document.getElementById("runtime-master-pod");
+
+    const nowTimeText = () => new Date().toLocaleString("zh-TW", { hour12: false });
+
+    async function refreshStatus() {
+      const ns = (nsInput.value || "performance-test").trim();
+      updatedAt.className = "badge text-bg-warning";
+      updatedAt.textContent = "讀取中";
+
+      try {
+        const response = await fetch(`/api/tests/runtime-status?namespace=${encodeURIComponent(ns)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        summary.className = data.running ? "alert alert-success py-2 mb-3" : "alert alert-secondary py-2 mb-3";
+        summary.textContent = `Namespace=${data.namespace}：${data.summary}`;
+
+        startJob.textContent = data.start_test_job || "-";
+        stopJob.textContent = data.stop_test_job || "-";
+        masterJob.textContent = `${data.master_job?.active ?? 0} / ${data.master_job?.succeeded ?? 0} / ${data.master_job?.failed ?? 0}`;
+        slaveJob.textContent = String(data.slave_job?.active ?? 0);
+        masterPod.textContent = `${data.master_pod?.name || "-"} (${data.master_pod?.phase || "-"})`;
+
+        updatedAt.className = "badge text-bg-success";
+        updatedAt.textContent = `已更新 ${nowTimeText()}`;
+      } catch (error) {
+        summary.className = "alert alert-danger py-2 mb-3";
+        summary.textContent = `讀取失敗：${error.message}`;
+        updatedAt.className = "badge text-bg-danger";
+        updatedAt.textContent = `失敗 ${nowTimeText()}`;
+      }
+    }
+
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await refreshStatus();
+    });
+
+    refreshStatus();
+    setInterval(refreshStatus, 10000);
+  })();
+</script>
+{% endblock %}

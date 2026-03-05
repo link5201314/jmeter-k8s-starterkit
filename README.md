@@ -22,6 +22,25 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 - 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
 - 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`）
 
+## Webapp 管理介面（FastAPI）
+
+本專案包含一個 `webapp` 子系統（`webapp/`），提供網頁化操作能力，與本 starterkit 的關係如下：
+
+- `start_test.sh` / `stop_test.sh` 仍是核心執行腳本；webapp 是其 UI 管理入口
+- webapp 透過 Helm / kubectl 操作同一套 k8s 資源（同 namespace）
+- webapp 的報表與 master 共用 PVC，才能即時瀏覽測試報告
+
+常見流程（摘要）：
+
+1. 打包並推送 `docker.io/isaac0815/jmeter-webapp:latest`
+2. 用 `skopeo inspect` 確認遠端 `Digest`
+3. 在 k8s 執行 `kubectl rollout restart deploy/jmeter-webapp`
+4. 以 pod `imageID`（`@sha256:...`）比對遠端 digest
+
+完整 webapp 說明（含登入權限、image 推送、digest 驗證、k8s 啟動）請見：`webapp/README.md`
+
+若遇到「頁面卡住 / 推版後仍舊版 / 找不到 webapp pod」等問題，可直接參考 `webapp/README.md` 的 **常見問題排查（Troubleshooting）** 章節。
+
 
 ## Features
 
@@ -300,6 +319,10 @@ kubectl delete -f k8s/metric-server.yaml
 ./stop_test.sh -n default -u --helm-release jmeter-runtime
 ```
 
+> 建議：日常操作優先使用「僅 stoptest」；不要每次都 `-u`。在 `Retain` 類型 StorageClass 下，反覆刪除 PVC 會造成大量 `Released` PV 累積。
+>
+> 本專案 jmeter chart 預設已設定 `pvc.keepOnUninstall: true`，即使 `helm uninstall jmeter-runtime`，也會保留 `jmeter-data-dir-pvc`，以避免持續產生新 PV。
+
 若未傳入 namespace，會自動使用 `default`，並輸出提示訊息。
 
 ```bash
@@ -328,6 +351,16 @@ kubectl delete -f k8s/metric-server.yaml
 - 若卡 `Terminating`，自動 patch PVC/PV finalizers 後重試刪除
 
 可用 `./reset_pvc.sh -h` 查看全部參數（如 `--skip-scale-report`）。
+
+若歷史上已累積許多 `Released` PV（常見於 `Retain` StorageClass），可用以下腳本清理：
+
+```bash
+# 先 dry-run 看清單（不刪除）
+./cleanup_released_pv.sh -n performance-test -c jmeter-data-dir-pvc --storage-class nfs-csi
+
+# 確認後再實際刪除
+./cleanup_released_pv.sh -n performance-test -c jmeter-data-dir-pvc --storage-class nfs-csi --execute
+```
 
 ## 標準操作流程（建議）
 

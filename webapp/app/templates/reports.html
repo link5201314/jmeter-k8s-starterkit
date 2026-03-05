@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" action="/reports" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">專案目錄</label>
+        <select class="form-select" name="project">
+          <option value="all" {% if selected_project == 'all' %}selected{% endif %}>全部專案</option>
+          {% for p in projects %}
+          <option value="{{ p }}" {% if selected_project == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">開始日期</label>
+        <input type="date" class="form-control" name="start_date" value="{{ selected_start_date }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">結束日期</label>
+        <input type="date" class="form-control" name="end_date" value="{{ selected_end_date }}">
+      </div>
+      <div class="col-md-2"><button class="btn btn-outline-primary w-100">篩選</button></div>
+      <div class="col-12 d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="quick-today">當日</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="quick-7days">近 7 天</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">測試報告下載</div>
+  <div class="card-body p-0">
+    <table class="table mb-0">
+      <thead>
+        <tr>
+          <th>專案</th>
+          <th>產生時間</th>
+          <th>報告目錄</th>
+          <th class="text-end">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td>{{ r.project }}</td>
+          <td>{{ r.generated_at }}</td>
+          <td>{{ r.rel_path }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="/report-static/{{ r.rel_path }}/index.html" target="_blank">預覽報告</a>
+            <a class="btn btn-sm btn-primary" href="/api/reports/download-zip?report_dir={{ r.rel_path | urlencode }}">ZIP</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">目前沒有報告資料夾</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const form = document.querySelector('form[action="/reports"]');
+    if (!form) return;
+
+    const startInput = form.querySelector('input[name="start_date"]');
+    const endInput = form.querySelector('input[name="end_date"]');
+    const todayBtn = document.getElementById('quick-today');
+    const last7Btn = document.getElementById('quick-7days');
+    if (!startInput || !endInput || !todayBtn || !last7Btn) return;
+
+    const toDateString = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    todayBtn.addEventListener('click', () => {
+      const now = new Date();
+      const dateStr = toDateString(now);
+      startInput.value = dateStr;
+      endInput.value = dateStr;
+      form.submit();
+    });
+
+    last7Btn.addEventListener('click', () => {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 6);
+      startInput.value = toDateString(start);
+      endInput.value = toDateString(end);
+      form.submit();
+    });
+  })();
+</script>
+{% endblock %}

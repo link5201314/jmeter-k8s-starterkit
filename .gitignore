@@ -10,3 +10,19 @@ scenario/**/load_test.sh
 
 # Helm dependency build 產生的套件快取
 k8s/helm/charts/*.tgz
+
+# Python virtual environment
+.venv/
+.venv312/
+
+# Python cache / bytecode
+__pycache__/
+*.pyc
+
+# Webapp runtime artifacts (keep directories via .gitkeep)
+webapp/data/*
+!webapp/data/.gitkeep
+webapp/logs/*
+!webapp/logs/.gitkeep
+webapp/tmp/*
+!webapp/tmp/.gitkeep

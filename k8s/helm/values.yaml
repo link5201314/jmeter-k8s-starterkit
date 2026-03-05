@@ -22,3 +22,6 @@ wiremock:
 
 grafana:
   enabled: true
+
+webapp:
+  enabled: true

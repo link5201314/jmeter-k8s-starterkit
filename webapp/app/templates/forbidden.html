@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="alert alert-danger">
+  {{ message or "你沒有此功能權限" }}
+</div>
+<div>
+  <a href="/" class="btn btn-outline-secondary">回首頁</a>
+</div>
+{% endblock %}

@@ -20,5 +20,8 @@ dependencies:
 - name: grafana
   repository: file://charts/grafana
   version: 0.1.0
-digest: sha256:28de748f2706e823ad2f9cf64b024c4e63b8d43d7fd8cc80d621bb31fcd0ca78
-generated: "2026-03-05T23:08:22.998724079+08:00"
+- name: webapp
+  repository: file://charts/webapp
+  version: 0.1.0
+digest: sha256:78b52758202e93cce9d34797ea8f96fda34fc9793e01f01104751ea50eebf505
+generated: "2026-03-06T05:01:13.621621472+08:00"

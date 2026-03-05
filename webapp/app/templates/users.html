@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header">新增使用者</div>
+      <div class="card-body">
+        {% if message %}
+        <div class="alert alert-success py-2">{{ message }}</div>
+        {% endif %}
+        {% if error %}
+        <div class="alert alert-danger py-2">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="/users/create" class="row g-3">
+          <div class="col-12">
+            <label class="form-label">帳號</label>
+            <input class="form-control" name="username" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label">群組</label>
+            <select class="form-select" name="group" required>
+              {% for g in groups %}
+              <option value="{{ g }}">{{ g }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">初始密碼</label>
+            <input class="form-control" type="password" name="password" minlength="8" required>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary" type="submit">建立使用者</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header">使用者清單</div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>帳號</th>
+                <th>群組</th>
+                <th>建立時間</th>
+                <th>更新時間</th>
+                <th class="text-end">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for user in users %}
+              <tr>
+                <td>{{ user.username }}</td>
+                <td style="min-width: 160px;">
+                  <form method="post" action="/users/update-group" class="d-flex gap-2">
+                    <input type="hidden" name="username" value="{{ user.username }}">
+                    <select class="form-select form-select-sm" name="group">
+                      {% for g in groups %}
+                      <option value="{{ g }}" {% if g == user.group %}selected{% endif %}>{{ g }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" type="submit">更新</button>
+                  </form>
+                </td>
+                <td>{{ user.created_at }}</td>
+                <td>{{ user.updated_at }}</td>
+                <td class="text-end" style="min-width: 330px;">
+                  {% if current_user and current_user.username != user.username %}
+                  <form method="post" action="/users/reset-password" class="d-flex gap-2 justify-content-end mb-2">
+                    <input type="hidden" name="username" value="{{ user.username }}">
+                    <input class="form-control form-control-sm" type="password" name="new_password" minlength="8" placeholder="新密碼(至少8碼)" required>
+                    <button class="btn btn-sm btn-outline-warning" type="submit">重設密碼</button>
+                  </form>
+                  {% else %}
+                  <div class="text-muted small mb-2">請使用右上角「變更密碼」</div>
+                  {% endif %}
+                  <form method="post" action="/users/delete" class="d-flex justify-content-end" onsubmit="return confirm('確定刪除使用者 {{ user.username }} ?')">
+                    <input type="hidden" name="username" value="{{ user.username }}">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">刪除</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

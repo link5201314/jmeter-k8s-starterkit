@@ -1,0 +1,33 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+replicaCount: 1
+
+image:
+  repository: jmeter-webapp
+  tag: "latest"
+  pullPolicy: Never
+  useGlobalRegistry: false
+
+service:
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  host: jmeter-web.example.com
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+nodeSelector: {}
+
+reportPvc:
+  claimName: jmeter-data-dir-pvc
+  mountPath: /workspace/report
