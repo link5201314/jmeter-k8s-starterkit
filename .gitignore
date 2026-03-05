@@ -1,6 +1,9 @@
 # 忽略自動生成的分割 CSV 目錄
 scenario/dataset/_split/
 
+# 報告資料夾
+report/
+
 # 忽略執行用的暫時腳本
 scenario/demoweb/jmeter_injector_start.sh
 scenario/demoweb/load_test.sh

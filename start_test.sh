@@ -33,27 +33,46 @@ usage()
   logit "INFO" "-m flag to copy fragmented jmx present in scenario/project/module if you use include controller and external test fragment"
   logit "INFO" "-i <injectorNumber> to scale slaves pods to the desired number of JMeter injectors"
   logit "INFO" "-r flag to enable report generation at the end of the test"
+  logit "INFO" "-E <env> test environment (e.g. prod/uat/sit/pt)"
+  logit "INFO" "-V <versions> app versions, ';' separated (e.g. tip-web=1.0.1;gemfire=2.2.3)"
+  logit "INFO" "-N <note> free-form notes"
+    logit "INFO" "-F <file> meta env file (REPORT_ENV/REPORT_VERSIONS/REPORT_NOTE)"
   exit 1
 }
 
+report_env=""
+report_versions=""
+report_note=""
+meta_file="report-meta.env"
+seen_args=0
+
 ### Parsing the arguments ###
-while getopts 'i:mj:hcrn:' option;
-    do
-      case $option in
-        n	)	namespace=${OPTARG}   ;;
-        c   )   csv=1 ;;
-        m   )   module=1 ;;
-        r   )   enable_report=1 ;;
-        j   )   jmx=${OPTARG} ;;
-        i   )   nb_injectors=${OPTARG} ;;
-        h   )   usage ;;
-        ?   )   usage ;;
-      esac
+while [[ $# -gt 0 ]]; do
+  seen_args=1
+  case "$1" in
+    -n) namespace="$2"; shift 2 ;;
+    -c) csv=1; shift ;;
+    -m) module=1; shift ;;
+    -r) enable_report=1; shift ;;
+    -j) jmx="$2"; shift 2 ;;
+    -i) nb_injectors="$2"; shift 2 ;;
+    -E) report_env="$2"; shift 2 ;;
+    -V) report_versions="$2"; shift 2 ;;
+    -N) report_note="$2"; shift 2 ;;
+    -F)
+      if [[ -n "$2" && "$2" != -* ]]; then
+        meta_file="$2"; shift 2
+      else
+        meta_file="report-meta.env"; shift
+      fi
+      ;;
+    -h) usage ;;
+    *) logit "ERROR" "Unknown option: $1"; usage ;;
+  esac
 done
 
-if [ "$#" -eq 0 ]
-  then
-    usage
+if [ "${seen_args}" -eq 0 ]; then
+  usage
 fi
 
 ### CHECKING VARS ###
@@ -78,6 +97,118 @@ if ! kubectl -n "${namespace}" get deploy report-server >/dev/null 2>&1; then
 fi
 
 jmx_dir="${jmx%%.*}"
+preprocess_env_file() {
+    local env_file="$1"
+    local temp_file
+
+    if [ ! -f "${env_file}" ]; then
+        logit "WARN" "Environment file not found: ${env_file}"
+        return 1
+    fi
+
+    temp_file=$(mktemp)
+    logit "INFO" "Preprocessing ${env_file} with JMETERTEST_ prefix"
+
+    # Process each line in the .env file
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]; then
+            echo "$line" >> "$temp_file"
+            continue
+        fi
+
+        # Extract variable name and value
+        if [[ "$line" =~ ^[[:space:]]*([^=]+)[[:space:]]*=(.*)$ ]]; then
+            local var_name="${BASH_REMATCH[1]}"
+            local var_value="${BASH_REMATCH[2]}"
+
+            # Trim whitespace from variable name
+            var_name=$(echo "$var_name" | xargs)
+
+            # Add JMETERTEST_ prefix to variable name
+            local prefixed_var="JMETERTEST_${var_name}"
+
+            # Reconstruct the line with prefixed variable name
+            echo "${prefixed_var}=${var_value}" >> "$temp_file"
+
+            logit "INFO" "Converted: ${var_name} -> ${prefixed_var}"
+        else
+            # If line doesn't match variable pattern, keep as is
+            echo "$line" >> "$temp_file"
+        fi
+    done < "${env_file}"
+
+    PREPROCESSED_ENV_FILE="$temp_file"
+}
+
+# Function to preprocess report-meta.env file by adding JMETERREPORT_ prefix to variables
+preprocess_report_meta_file() {
+    local meta_file="$1"
+    local temp_file
+
+    if [ ! -f "${meta_file}" ]; then
+        logit "WARN" "Report meta file not found: ${meta_file}"
+        return 1
+    fi
+
+    temp_file=$(mktemp)
+    logit "INFO" "Preprocessing ${meta_file} with JMETERREPORT_ prefix"
+
+    # Process each line in the report-meta.env file
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]; then
+            echo "$line" >> "$temp_file"
+            continue
+        fi
+
+        # Extract variable name and value
+        if [[ "$line" =~ ^[[:space:]]*([^=]+)[[:space:]]*=(.*)$ ]]; then
+            local var_name="${BASH_REMATCH[1]}"
+            local var_value="${BASH_REMATCH[2]}"
+
+            # Trim whitespace from variable name
+            var_name=$(echo "$var_name" | xargs)
+
+            # Add JMETERREPORT_ prefix to variable name
+            local prefixed_var="JMETERREPORT_${var_name}"
+
+            # Reconstruct the line with prefixed variable name
+            echo "${prefixed_var}=${var_value}" >> "$temp_file"
+
+            logit "INFO" "Converted: ${var_name} -> ${prefixed_var}"
+        else
+            # If line doesn't match variable pattern, keep as is
+            echo "$line" >> "$temp_file"
+        fi
+    done < "${meta_file}"
+
+    PREPROCESSED_REPORT_META_FILE="$temp_file"
+}
+
+# Process meta_file if specified (after function definitions)
+if [ -n "${meta_file}" ]; then
+    # meta_file 路徑規則：若為相對路徑，預設放在 scenario/${jmx_dir}/
+    if [[ "${meta_file}" != /* ]]; then
+        meta_file="scenario/${jmx_dir}/${meta_file}"
+    fi
+
+    if [ -f "${meta_file}" ]; then
+        preprocess_report_meta_file "${meta_file}"
+        if [ -n "${PREPROCESSED_REPORT_META_FILE}" ] && [ -f "${PREPROCESSED_REPORT_META_FILE}" ]; then
+            set -a
+            # shellcheck disable=SC1090
+            source "${PREPROCESSED_REPORT_META_FILE}"
+            set +a
+            rm -f "${PREPROCESSED_REPORT_META_FILE}"
+            [ -n "${JMETERREPORT_REPORT_ENV}" ] && report_env="${JMETERREPORT_REPORT_ENV}"
+            [ -n "${JMETERREPORT_REPORT_VERSIONS}" ] && report_versions="${JMETERREPORT_REPORT_VERSIONS}"
+            [ -n "${JMETERREPORT_REPORT_NOTE}" ] && report_note="${JMETERREPORT_REPORT_NOTE}"
+        fi
+    else
+        logit "WARN" "Meta file not found: ${meta_file}"
+    fi
+fi
 
 if [ ! -f "scenario/${jmx_dir}/${jmx}" ]; then
     logit "ERROR" "Test script file was not found in scenario/${jmx_dir}/${jmx}"
@@ -305,31 +436,122 @@ slave_array=($(echo ${slave_list} | sed 's/,/ /g'))
 
 
 ## Starting Jmeter load test
-source "scenario/${jmx_dir}/.env"
+# Preprocess .env file to add JMETERTEST_ prefix to avoid variable pollution
+preprocess_env_file "scenario/${jmx_dir}/.env"
+if [ -n "${PREPROCESSED_ENV_FILE}" ] && [ -f "${PREPROCESSED_ENV_FILE}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${PREPROCESSED_ENV_FILE}"
+    set +a
+    rm -f "${PREPROCESSED_ENV_FILE}"
+else
+    logit "WARN" "Preprocessed env file unavailable, fallback to source original .env"
+    source "scenario/${jmx_dir}/.env"
+fi
 
-param_host="-Ghost=${host} -Gport=${port} -Gprotocol=${protocol}"
-param_test="-GtimeoutConnect=${timeoutConnect} -GtimeoutResponse=${timeoutResponse} -Gdata_dir=${data_dir}"
-param_user="-Gthreads=${threads} -Gduration=${duration} -Grampup=${rampup}"
+# Function to build JMeter global parameters from JMETERTEST_ prefixed environment variables
+build_jmeter_global_params() {
+    local all_params=""
 
+    # Iterate through all environment variables that start with JMETERTEST_
+    for var in $(env | grep '^JMETERTEST_' | cut -d'=' -f1); do
+        # Remove JMETERTEST_ prefix to get the JMeter variable name
+        local jmeter_var="${var#JMETERTEST_}"
+        # Get the value of the variable
+        local var_value="${!var}"
 
+        if [ -n "${var_value}" ]; then
+            # Build JMeter parameter
+            local param="-G${jmeter_var}=${var_value}"
+            all_params="${all_params} ${param}"
+            logit "INFO" "Global parameter: ${param}"
+        fi
+    done
+
+    param_all="${all_params}"
+}
+
+# Build global parameters from .env file
+build_jmeter_global_params
+
+report_enabled=0
 if [ -n "${enable_report}" ]; then
-    report_command_line="--reportatendofloadtests --reportoutputfolder /report/${jmx_dir}/report-${jmx}-$(date +"%F_%H%M%S")"
+    report_enabled=1
+    report_command_line="--reportatendofloadtests --reportoutputfolder /report/${jmx_dir}/report-${jmx}-\$(date +\"%F_%H%M%S\")"
 fi
 
 echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -gt 0 ]; do for slave in \${slave_array[@]}; do if echo 'test open port' 2>/dev/null > /dev/tcp/\${slave}/1099; then echo \${slave}' ready' && slave_array=(\${slave_array[@]/\${slave}/}); index=\$((index-1)); else echo \${slave}' not ready'; fi; done; echo 'Waiting for slave readiness'; sleep 2; done" > "scenario/${jmx_dir}/load_test.sh"
 
-{ 
+{
+    echo "REPORT_ENABLED=${report_enabled}"
+    printf 'REPORT_ENV=%q\n' "${report_env}"
+    printf 'REPORT_VERSIONS=%q\n' "${report_versions}"
+    printf 'REPORT_NOTE=%q\n' "${report_note}"
+
+    echo "report_ts=\$(date +\"%F_%H%M%S\")"
+    echo "report_dir=\"/report/${jmx_dir}/report-${jmx}-\${report_ts}\""
+
+    echo "echo \"[DEBUG] report_ts=\${report_ts}\""
+    echo "echo \"[DEBUG] report_dir=\${report_dir}\""
+
     echo "echo \"Installing needed plugins for master\""
-    echo "cd /opt/jmeter/apache-jmeter/bin" 
-    echo "sh PluginsManagerCMD.sh install-for-jmx ${jmx}" 
+    echo "cd /opt/jmeter/apache-jmeter/bin"
+    echo "sh PluginsManagerCMD.sh install-for-jmx ${jmx}"
     echo "echo \"Done installing plugins, launching test\""
     echo "mkdir -p /report/${jmx_dir}"
     echo "JVM_ARGS=\"${JMETER_MASTER_JVM_HEAP_ARGS}\""
     echo "export JVM_ARGS"
-    echo "jmeter ${param_host} ${param_test} ${param_user} ${report_command_line} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx}_$(date +"%F_%H%M%S").jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remoteexit --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err &"
+    echo "jmeter ${param_all} --reportatendofloadtests --reportoutputfolder \${report_dir} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx}_\${report_ts}.jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remoteexit --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err &"
     echo "trap 'kill -10 1' EXIT INT TERM"
     echo "java -jar /opt/jmeter/apache-jmeter/lib/jolokia-java-agent.jar start JMeter >> jmeter-master.out 2>> jmeter-master.err"
-    echo "echo \"Starting load test at : $(date)\" && wait"
+    echo "echo \"Starting load test at : \$(date)\" && wait"
+
+    echo "if [ \"\${REPORT_ENABLED}\" = \"1\" ]; then"
+    echo "  index_file=\"\${report_dir}/index.html\""
+    echo "  echo \"[DEBUG] index_file=\${index_file}\""
+    echo "  if [ -f \"\${index_file}\" ]; then"
+    echo "    html_escape() { awk '{gsub(/&/,\"&amp;\"); gsub(/</,\"&lt;\"); gsub(/>/,\"&gt;\"); gsub(/\\\"/,\"&quot;\"); gsub(/\\047/,\"&#39;\"); printf \"%s\", \$0 }'; }"
+    echo "    env_val=\$(printf '%s' \"\${REPORT_ENV}\" | html_escape)"
+    echo "    ver_val=\$(printf '%s' \"\${REPORT_VERSIONS}\" | html_escape)"
+    echo "    note_val=\$(printf '%s' \"\${REPORT_NOTE}\" | html_escape | awk 'BEGIN{RS=\"\"; ORS=\"\"} {gsub(/\\n/,\"<br/>\"); print}')"
+    echo "    echo \"[DEBUG] env_val=\${env_val}\""
+    echo "    echo \"[DEBUG] ver_val=\${ver_val}\""
+    echo "    echo \"[DEBUG] note_val_len=\$(printf '%s' \"\${note_val}\" | wc -c)\""
+    echo "    [ -z \"\${env_val}\" ] && env_val=\"(empty)\""
+    echo "    [ -z \"\${ver_val}\" ] && ver_val=\"(empty)\""
+    echo "    [ -z \"\${note_val}\" ] && note_val=\"(empty)\""
+    echo "    inject_file=\$(mktemp)"
+    echo "    echo \"[DEBUG] inject_file=\${inject_file}\""
+    echo "    cat > \"\${inject_file}\" <<HTML"
+    echo "<div class=\"row\">"
+    echo "  <div class=\"col-lg-12\">"
+    echo "    <div class=\"panel panel-default\">"
+    echo "      <div class=\"panel-heading\" style=\"text-align:center;\">"
+    echo "        <p class=\"dashboard-title\">Custom Test Metadata</p>"
+    echo "      </div>"
+    echo "      <div class=\"panel-body\">"
+    echo "        <table class=\"table table-bordered table-condensed\">"
+    echo "          <tr><td>Environment</td><td>\${env_val}</td></tr>"
+    echo "          <tr><td>App Versions</td><td>\${ver_val}</td></tr>"
+    echo "          <tr><td>Notes</td><td>\${note_val}</td></tr>"
+    echo "        </table>"
+    echo "      </div>"
+    echo "    </div>"
+    echo "  </div>"
+    echo "</div>"
+    echo "HTML"
+    echo "    echo \"[DEBUG] inject_file_size=\$(wc -c < \"\${inject_file}\")\""
+    echo "    tmp_index=\$(mktemp)"
+    echo "    echo \"[DEBUG] tmp_index=\${tmp_index}\""
+    echo "    awk -v inj=\"\${inject_file}\" 'BEGIN{while((getline l<inj)>0) buf=buf l \"\\n\"; close(inj)} {print} /<div id=\"page-wrapper\"[^>]*>/{printf \"%s\", buf}' \"\${index_file}\" > \"\${tmp_index}\""
+    echo "    mv \"\${tmp_index}\" \"\${index_file}\""
+    echo "    chmod 644 \"\${index_file}\""
+    echo "    echo \"[DEBUG] injected into \${index_file}\""
+    echo "    rm -f \"\${inject_file}\""
+    echo "  else"
+    echo "    echo \"[DEBUG] index.html not found\""
+    echo "  fi"
+    echo "fi"
 } >> "scenario/${jmx_dir}/load_test.sh"
 
 logit "INFO" "Copying scenario/${jmx_dir}/load_test.sh into  ${master_pod}:/opt/jmeter/load_test"
