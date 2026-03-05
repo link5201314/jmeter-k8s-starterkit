@@ -188,6 +188,14 @@ You can do this for the generated report and the JTL for example.
 - 執行時自動加上 `-S <path>/jmeter-system.properties`
 - 並擷取部分 report 參數轉為 `-J...`（例如 granularity / apdex）
 
+> 根目錄不再放 `jmeter-system.properties` 範例檔。請使用模板：
+> `scenario/_template/jmeter-system.properties`
+
+```bash
+# 以 demoweb 專案為例
+cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.properties
+```
+
 ---
 
 ### 5) CSV 分檔流程強化
