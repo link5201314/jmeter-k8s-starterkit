@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-server
+  labels:
+    app: report-server
+    config_source: "static"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: report-server
+  template:
+    metadata:
+      labels:
+        app: report-server
+    spec:
+{{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+{{- end }}
+{{- end }}
+      containers:
+      - name: nginx
+        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: jmeter-report
+          mountPath: /usr/share/nginx/html
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+      volumes:
+      - name: jmeter-report
+        persistentVolumeClaim:
+          claimName: jmeter-data-dir-pvc
+      - name: nginx-conf
+        configMap:
+          name: report-server-nginx-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: report-server
+spec:
+  selector:
+    app: report-server
+  ports:
+  - port: 80
+    targetPort: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: report-server-nginx-conf
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+      root /usr/share/nginx/html;
+      index index.html index.htm;
+      autoindex on;
+      location / {
+        try_files $uri $uri/ =404;
+      }
+    }

@@ -1,0 +1,36 @@
+apiVersion: v2
+name: jmeter-k8s-stack
+description: Umbrella chart for jmeter k8s starterkit
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: jmeter
+    version: 0.1.0
+    repository: "file://charts/jmeter"
+    condition: jmeter.enabled
+  - name: influxdb
+    version: 0.1.0
+    repository: "file://charts/influxdb"
+    condition: influxdb.enabled
+  - name: cleaner
+    version: 0.1.0
+    repository: "file://charts/cleaner"
+    condition: cleaner.enabled
+  - name: report-server
+    version: 0.1.0
+    repository: "file://charts/report-server"
+    condition: report-server.enabled
+  - name: telegraf
+    version: 0.1.0
+    repository: "file://charts/telegraf"
+    condition: telegraf.enabled
+  - name: wiremock
+    version: 0.1.0
+    repository: "file://charts/wiremock"
+    condition: wiremock.enabled
+  - name: grafana
+    version: 0.1.0
+    repository: "file://charts/grafana"
+    condition: grafana.enabled

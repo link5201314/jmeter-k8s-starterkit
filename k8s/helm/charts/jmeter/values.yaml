@@ -1,0 +1,41 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+master:
+  image:
+    repository: rbillon59/jmeter-k8s-base
+    tag: "5.6.3"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "1024Mi"
+      cpu: "500m"
+    limits:
+      memory: "2048Mi"
+      cpu: "1000m"
+
+slave:
+  image:
+    repository: rbillon59/jmeter-k8s-base
+    tag: "5.6.3"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "768Mi"
+      cpu: "1000m"
+
+slaves:
+  parallelism: 1
+
+pvc:
+  storageClassName: nfs-csi
+  size: 5Gi
+
+hostAliases:
+  - ip: 192.168.29.132
+    hostnames:
+      - sbdemo.example.com

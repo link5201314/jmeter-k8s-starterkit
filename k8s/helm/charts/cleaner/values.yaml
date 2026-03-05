@@ -1,0 +1,14 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+image:
+  repository: bitnami/kubectl
+  tag: "1.31.0"
+  pullPolicy: IfNotPresent
+
+cronjob:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1

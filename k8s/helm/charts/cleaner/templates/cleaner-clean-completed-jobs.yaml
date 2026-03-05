@@ -1,0 +1,90 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cleaner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: my-completed-jobs-cleaner-role
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["list", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: my-completed-jobs-cleaner-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: my-completed-jobs-cleaner-role
+subjects:
+- kind: ServiceAccount
+  name: cleaner
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cleaner-script
+  labels:
+    k8s-app: cleaner
+data:
+  clean.sh: |+
+    #!/bin/sh
+    set -x 
+    NS="${POD_NAMESPACE:-default}"
+    master_done_count=$(kubectl -n "$NS" get pod -l jmeter_mode=master \
+      -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -c '^Succeeded$' || true)
+
+    master_total_count=$(kubectl -n "$NS" get pod -l jmeter_mode=master \
+      -o jsonpath='{.items[*].metadata.name}' | wc -w | tr -d ' ')    
+
+    if [ "$master_total_count" -gt 0 ] && [ "$master_done_count" -eq "$master_total_count" ]; then
+      kubectl -n "$NS" delete jobs --selector jmeter_mode=slave 
+      kubectl -n "$NS" delete jobs --selector jmeter_mode=master
+    fi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jobs-cleanup
+spec:
+  schedule: {{ .Values.cronjob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.cronjob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: cleaner
+{{- if .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+{{- range .Values.global.imagePullSecrets }}
+            - name: {{ . }}
+{{- end }}
+{{- end }}
+          containers:
+          - name: kubectl-container
+            image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            command: ["sh", "/tmp/clean.sh"]
+            env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            volumeMounts:
+            - name: cleaner-script
+              mountPath: /tmp/
+          restartPolicy: Never
+          volumes:
+          - name: cleaner-script
+            configMap:
+              name: cleaner-script

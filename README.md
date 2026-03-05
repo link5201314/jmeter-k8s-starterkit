@@ -132,7 +132,9 @@ You can run
 
 ```sh
 # If a master pod is not available, create one
-kubectl apply -f k8s/jmeter/jmeter-master.yaml
+helm upgrade --install jmeter-runtime k8s/helm/charts/jmeter \
+  -n <namespace> --create-namespace \
+  --set slaves.parallelism=0
 # Wait for the pod is Running, then
 kubectl cp -n <namespace> <master-pod-id>:/report/<result> ${PWD}/<local-result-name>
 # To copy the content of the report from the pod to your local
@@ -188,43 +190,85 @@ You can do this for the generated report and the JTL for example.
 
 ---
 
-### 6) 以 `config/jmeter.env` 取代資源參數
-啟動時會載入 `config/jmeter.env`，並透過 `envsubst` 套入 k8s YAML（master/slave），方便集中管理資源設定。
+### 6) JMeter runtime 參數（建議改為環境分檔）
+`start_test.sh` 會依序載入以下檔案（先找到先用）：
+
+1. `--jmeter-env-file <path>`（手動指定）
+2. `config/jmeter.<helm-env>.env`（例如 `config/jmeter.lab.env`、`config/jmeter.dr-prod.env`）
+3. `config/jmeter.env`（fallback）
+
+建議做法：
+- `master/slave` **resources** 主要放 Helm values（`k8s/helm/environments/*.yaml` 或 `scenario/<project>/deploy.values.yaml`）
+- `JMETER_MASTER_JVM_HEAP_ARGS` / `JMETER_SLAVE_JVM_HEAP_ARGS` 放在 `config/jmeter.<env>.env`
+
+`config/jmeter.env` 可保留為共用 fallback，不再作為主要環境配置入口。
+
+環境基線（建議）：
+
+| 項目 | lab | dr-prod |
+|---|---|---|
+| JMeter Master Resources | 依 chart 預設或專案覆蓋 | requests: 1000m/2048Mi, limits: 2000m/4096Mi |
+| JMeter Slave Resources | 依 chart 預設或專案覆蓋 | requests: 1000m/1024Mi, limits: 2000m/2048Mi |
+| JVM Heap（Master） | `config/jmeter.lab.env` | `config/jmeter.dr-prod.env` |
+| JVM Heap（Slave） | `config/jmeter.lab.env` | `config/jmeter.dr-prod.env` |
+
+對應檔案：
+- Helm resources：`k8s/helm/environments/lab.yaml`、`k8s/helm/environments/dr-prod.yaml`
+- JVM heap：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
+
+可另外用 `scenario/<project>/deploy.values.yaml` 定義專案級部署參數，達成「環境（lab/dr-prod） + 專案 + 本次測試」三層覆蓋。
+
+三層覆蓋優先序（由低到高）如下：
+
+| 層級 | 來源 | 作用 | 優先序 |
+|---|---|---|---|
+| 1 | `k8s/helm/environments/<env>.yaml` | 環境共用基線（lab/dr-prod） | 低 |
+| 2 | `scenario/<project>/deploy.values.yaml` | 專案固定需求（例如 demoweb） | 中 |
+| 3 | `start_test.sh` 本次執行產生的 run values | 本次測試動態參數（例如 `-i`） | 高 |
+
+範例（同一個 key 衝突時誰生效）：
+- `lab.yaml` 設 `slaves.parallelism: 1`
+- `scenario/demoweb/deploy.values.yaml` 設 `slaves.parallelism: 4`
+- 命令列帶 `-i 2`
+
+最終會使用 `2`（因為本次執行層優先序最高）。
+
+已提供範本：`scenario/_template/deploy.values.yaml`
+
+```bash
+# 以 demoweb 專案為例
+cp scenario/_template/deploy.values.yaml scenario/demoweb/deploy.values.yaml
+```
 
 ---
 
 ## 快速使用（建議）
 
 ```
-# 建議部署至performance-test namespace
-# 但
-# 建立K8S資源
-kubectl create -R -f jmeter/ -n performance-test
-kubectl create -R -f tool/influxdb/ -n performance-test
+# 建議部署至 performance-test namespace
 
-kubectl create -f tool/telegraf/telegraf-operator.yaml
-kubectl create -f tool/telegraf/telegraf-configmap.yaml -n performance-test
-kubectl create -f tool/telegraf/telegraf-daemonset.yaml -n performance-test
+# 1) 仍維持非 Helm 管理（不動）
+kubectl apply -f k8s/metric-server.yaml
+kubectl apply -f k8s/telegraf-operator.yaml
 
-kubectl create -R -f tool/grafana/ -n performance-test
-kubectl create -R -f tool/cleaner/ -n performance-test
-kubectl create -R -f tool/report-server/ -n performance-test
+# 2) 建立 Helm 依賴並佈署整套資源（lab）
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/lab.yaml
 
-#刪除K8S資源
-kubectl delete -R -f tool/report-server/ -n performance-test
-kubectl delete -R -f tool/cleaner/ -n performance-test
-kubectl delete -R -f tool/grafana/ -n performance-test
+# 3) 移除 Helm 管理資源
+helm uninstall perf-stack -n performance-test
 
-kubectl delete -f tool/telegraf/telegraf-operator.yaml
-kubectl delete -f tool/telegraf/telegraf-configmap.yaml -n performance-test
-kubectl delete -f tool/telegraf/telegraf-daemonset.yaml -n performance-test
-
-kubectl delete -R -f tool/influxdb/ -n performance-test
-kubectl delete -R -f jmeter/ -n performance-test
+# 4) 移除非 Helm 管理資源
+kubectl delete -f k8s/telegraf-operator.yaml
+kubectl delete -f k8s/metric-server.yaml
 ```
 
 ```bash
-./start_test.sh -j my-scenario.jmx -n default -i 20 -c -m -r \
+./start_test.sh -j my-scenario.jmx -n default -i 2 -c -m -r \
+  --helm-env lab \
+  --helm-release jmeter-runtime \
   -E prod \
   -V "tip-web=1.0.1;gemfire=2.2.3" \
   -N "壓測前驗證版" \
@@ -234,6 +278,9 @@ kubectl delete -R -f jmeter/ -n performance-test
 停止測試：
 ```bash
 ./stop_test.sh -n default
+
+# 停測後一併卸載 jmeter runtime (helm)
+./stop_test.sh -n default -u --helm-release jmeter-runtime
 ```
 
 若未傳入 namespace，會自動使用 `default`，並輸出提示訊息。
@@ -241,4 +288,95 @@ kubectl delete -R -f jmeter/ -n performance-test
 ```bash
 ./stop_test.sh
 # [INFO] Namespace not provided, using default namespace: default
+```
+
+### PVC 整顆重置（含刪除 PVC 物件）
+
+若你要直接重置 `jmeter-data-dir-pvc`（不是只清空內容），可用：
+
+```bash
+./reset_pvc.sh -n performance-test -r jmeter-runtime -p jmeter-data-dir-pvc
+
+# 重置後自動把 report-server 拉回 1
+./reset_pvc.sh -n performance-test -r jmeter-runtime -p jmeter-data-dir-pvc --restore-report-server
+
+# 重置後自動重建 jmeter-runtime（會重建 PVC）
+./reset_pvc.sh -n performance-test -r jmeter-runtime -p jmeter-data-dir-pvc --recreate-runtime --restore-report-server
+```
+
+腳本會自動執行：
+- 卸載 runtime release（預設 `jmeter-runtime`）
+-（可選）將 report-server scale 到 0
+- 刪除 PVC
+- 若卡 `Terminating`，自動 patch PVC/PV finalizers 後重試刪除
+
+可用 `./reset_pvc.sh -h` 查看全部參數（如 `--skip-scale-report`）。
+
+## 標準操作流程（建議）
+
+### A) Lab 環境
+
+```bash
+# 啟動測試（Lab）
+./start_test.sh -j demoweb.jmx -n performance-test -i 20 -c -m -r \
+  --helm-env lab \
+  --helm-release jmeter-runtime \
+  -E lab \
+  -V "tip-web=1.0.1;gemfire=2.2.3" \
+  -N "lab smoke + baseline" \
+  -F report-meta.env
+
+# 停止測試（僅 stoptest）
+./stop_test.sh -n performance-test
+
+# 停止測試並卸載 jmeter runtime
+./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
+```
+
+### B) DR-Prod 環境
+
+```bash
+# 啟動測試（DR-Prod，使用私有 registry values）
+./start_test.sh -j demoweb.jmx -n performance-test -i 20 -c -m -r \
+  --helm-env dr-prod \
+  --helm-release jmeter-runtime \
+  -E dr-prod \
+  -V "tip-web=1.0.1;gemfire=2.2.3" \
+  -N "dr-prod full load" \
+  -F report-meta.env
+
+# 停止測試並卸載 jmeter runtime
+./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
+```
+
+> 參數說明可用：`./start_test.sh -h`、`./stop_test.sh -h`
+
+## 最短指令（直接複製）
+
+### Lab
+
+```bash
+# 佈署基礎元件
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespace -f k8s/helm/environments/lab.yaml
+
+# 執行測試（2 injectors）
+./start_test.sh -j demoweb.jmx -n performance-test -i 2 -c -m -r --helm-env lab --helm-release jmeter-runtime
+
+# 停測（保留 jmeter-runtime）
+./stop_test.sh -n performance-test
+```
+
+### DR-Prod
+
+```bash
+# 佈署基礎元件
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespace -f k8s/helm/environments/dr-prod.yaml
+
+# 執行測試（2 injectors）
+./start_test.sh -j demoweb.jmx -n performance-test -i 2 -c -m -r --helm-env dr-prod --helm-release jmeter-runtime
+
+# 停測並清掉 jmeter-runtime
+./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
 ```

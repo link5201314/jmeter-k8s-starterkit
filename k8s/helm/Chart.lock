@@ -1,0 +1,24 @@
+dependencies:
+- name: jmeter
+  repository: file://charts/jmeter
+  version: 0.1.0
+- name: influxdb
+  repository: file://charts/influxdb
+  version: 0.1.0
+- name: cleaner
+  repository: file://charts/cleaner
+  version: 0.1.0
+- name: report-server
+  repository: file://charts/report-server
+  version: 0.1.0
+- name: telegraf
+  repository: file://charts/telegraf
+  version: 0.1.0
+- name: wiremock
+  repository: file://charts/wiremock
+  version: 0.1.0
+- name: grafana
+  repository: file://charts/grafana
+  version: 0.1.0
+digest: sha256:28de748f2706e823ad2f9cf64b024c4e63b8d43d7fd8cc80d621bb31fcd0ca78
+generated: "2026-03-05T23:08:22.998724079+08:00"

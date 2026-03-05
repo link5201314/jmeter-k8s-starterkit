@@ -1,0 +1,22 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+jmeter:
+  enabled: false
+
+grafana:
+  ingress:
+    host: grafana.example.com
+
+report-server:
+  ingress:
+    host: report.example.com
+
+wiremock:
+  enabled: false
+
+cleaner:
+  enabled: true
+  image:
+    tag: "latest"

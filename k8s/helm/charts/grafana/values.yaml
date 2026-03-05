@@ -1,0 +1,11 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+image:
+  repository: grafana/grafana
+  tag: "7.3.3"
+  pullPolicy: IfNotPresent
+
+ingress:
+  host: grafana.example.com

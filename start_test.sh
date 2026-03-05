@@ -37,6 +37,10 @@ usage()
   logit "INFO" "-V <versions> app versions, ';' separated (e.g. tip-web=1.0.1;gemfire=2.2.3)"
   logit "INFO" "-N <note> free-form notes"
     logit "INFO" "-F <file> meta env file (REPORT_ENV/REPORT_VERSIONS/REPORT_NOTE)"
+    logit "INFO" "--helm-env <name> helm env values name under k8s/helm/environments (default: lab)"
+    logit "INFO" "--helm-release <name> helm release name for jmeter chart (default: jmeter-runtime)"
+    logit "INFO" "--helm-chart <path> helm chart path for jmeter resources (default: k8s/helm/charts/jmeter)"
+        logit "INFO" "--jmeter-env-file <path> explicit env file for JVM/resource overrides"
   exit 1
 }
 
@@ -45,6 +49,10 @@ report_versions=""
 report_note=""
 meta_file="report-meta.env"
 seen_args=0
+helm_env="lab"
+helm_release="jmeter-runtime"
+helm_chart_path="${PWD}/k8s/helm/charts/jmeter"
+jmeter_env_file_override=""
 
 ### Parsing the arguments ###
 while [[ $# -gt 0 ]]; do
@@ -59,6 +67,10 @@ while [[ $# -gt 0 ]]; do
     -E) report_env="$2"; shift 2 ;;
     -V) report_versions="$2"; shift 2 ;;
     -N) report_note="$2"; shift 2 ;;
+        --helm-env) helm_env="$2"; shift 2 ;;
+        --helm-release) helm_release="$2"; shift 2 ;;
+        --helm-chart) helm_chart_path="$2"; shift 2 ;;
+        --jmeter-env-file) jmeter_env_file_override="$2"; shift 2 ;;
     -F)
       if [[ -n "$2" && "$2" != -* ]]; then
         meta_file="$2"; shift 2
@@ -215,49 +227,114 @@ if [ ! -f "scenario/${jmx_dir}/${jmx}" ]; then
     usage
 fi
 
+helm_env_file="${PWD}/k8s/helm/environments/${helm_env}.yaml"
+project_deploy_values="scenario/${jmx_dir}/deploy.values.yaml"
+jmeter_env_file=""
+
 # Load JMeter resource env vars
-if [ -f "${PWD}/config/jmeter.env" ]; then
+if [ -n "${jmeter_env_file_override}" ]; then
+    jmeter_env_file="${jmeter_env_file_override}"
+elif [ -f "${PWD}/config/jmeter.${helm_env}.env" ]; then
+    jmeter_env_file="${PWD}/config/jmeter.${helm_env}.env"
+elif [ -f "${PWD}/config/jmeter.env" ]; then
+    jmeter_env_file="${PWD}/config/jmeter.env"
+fi
+
+if [ -n "${jmeter_env_file}" ] && [ -f "${jmeter_env_file}" ]; then
+    logit "INFO" "Loading jmeter runtime env file: ${jmeter_env_file}"
     set -a
     # shellcheck disable=SC1091
-    source "${PWD}/config/jmeter.env"
+    source "${jmeter_env_file}"
     set +a
 else
-    logit "WARN" "Missing config/jmeter.env; resources placeholders may not be substituted"
+    logit "WARN" "No jmeter runtime env file found (checked: config/jmeter.${helm_env}.env, config/jmeter.env)"
 fi
 
-# Recreating each pods
-logit "INFO" "Recreating pod set"
-kubectl -n "${namespace}" delete -f k8s/jmeter/jmeter-master.yaml -f k8s/jmeter/jmeter-slave.yaml 2> /dev/null
+# Recreating each pods via helm
+if ! command -v helm >/dev/null 2>&1; then
+    logit "ERROR" "helm command not found. Please install helm first."
+    exit 1
+fi
 
-tmp_master="$(mktemp)"
-tmp_slave="$(mktemp)"
-envsubst < k8s/jmeter/jmeter-master.yaml > "${tmp_master}"
-envsubst < k8s/jmeter/jmeter-slave.yaml > "${tmp_slave}"
-kubectl -n "${namespace}" apply -f "${tmp_master}" -f "${tmp_slave}"
-rm -f "${tmp_master}" "${tmp_slave}"
+if [ ! -d "${helm_chart_path}" ]; then
+    logit "ERROR" "Helm chart path not found: ${helm_chart_path}"
+    exit 1
+fi
 
-kubectl -n "${namespace}" patch job jmeter-slaves -p '{"spec":{"parallelism":0}}'
-logit "INFO" "Waiting for all slaves pods to be terminated before recreating the pod set"
-while [[ $(kubectl -n ${namespace} get pods -l jmeter_mode=slave -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "" ]]; do echo "$(kubectl -n ${namespace} get pods -l jmeter_mode=slave )" && sleep 1; done
+target_injectors="${nb_injectors}"
+if [ -z "${target_injectors}" ]; then
+    target_injectors=1
+    logit "WARN" "Injector number not provided, default to 1"
+fi
 
-# Starting jmeter slave pod 
-if [ -z "${nb_injectors}" ]; then
-    logit "WARNING" "Keeping number of injector to 1"
-    kubectl -n "${namespace}" patch job jmeter-slaves -p '{"spec":{"parallelism":1}}'
+run_values_file="$(mktemp)"
+{
+    echo "slaves:"
+    echo "  parallelism: ${target_injectors}"
+
+    if [ -n "${JMETER_MASTER_REQUEST_MEMORY}" ] || [ -n "${JMETER_MASTER_REQUEST_CPU}" ] || [ -n "${JMETER_MASTER_LIMIT_MEMORY}" ] || [ -n "${JMETER_MASTER_LIMIT_CPU}" ]; then
+        echo "master:"
+        echo "  resources:"
+        echo "    requests:"
+        echo "      memory: \"${JMETER_MASTER_REQUEST_MEMORY}\""
+        echo "      cpu: \"${JMETER_MASTER_REQUEST_CPU}\""
+        echo "    limits:"
+        echo "      memory: \"${JMETER_MASTER_LIMIT_MEMORY}\""
+        echo "      cpu: \"${JMETER_MASTER_LIMIT_CPU}\""
+    fi
+
+    if [ -n "${JMETER_SLAVE_REQUEST_MEMORY}" ] || [ -n "${JMETER_SLAVE_REQUEST_CPU}" ] || [ -n "${JMETER_SLAVE_LIMIT_MEMORY}" ] || [ -n "${JMETER_SLAVE_LIMIT_CPU}" ]; then
+        echo "slave:"
+        echo "  resources:"
+        echo "    requests:"
+        echo "      memory: \"${JMETER_SLAVE_REQUEST_MEMORY}\""
+        echo "      cpu: \"${JMETER_SLAVE_REQUEST_CPU}\""
+        echo "    limits:"
+        echo "      memory: \"${JMETER_SLAVE_LIMIT_MEMORY}\""
+        echo "      cpu: \"${JMETER_SLAVE_LIMIT_CPU}\""
+    fi
+} > "${run_values_file}"
+
+logit "INFO" "Deleting previous jmeter jobs before helm upgrade"
+kubectl -n "${namespace}" delete job jmeter-master jmeter-slaves --ignore-not-found >/dev/null 2>&1 || true
+
+helm_cmd=(
+    helm upgrade --install "${helm_release}" "${helm_chart_path}"
+    -n "${namespace}" --create-namespace
+)
+
+if [ -f "${helm_env_file}" ]; then
+    logit "INFO" "Using helm environment values: ${helm_env_file}"
+    helm_cmd+=( -f "${helm_env_file}" )
 else
-    logit "INFO" "Scaling the number of pods to ${nb_injectors}. "
-    kubectl -n "${namespace}" patch job jmeter-slaves -p '{"spec":{"parallelism":'${nb_injectors}'}}'
-    logit "INFO" "Waiting for pods to be ready"
-
-    end=${nb_injectors}
-    for ((i=1; i<=end; i++))
-    do
-        validation_string=${validation_string}"True"
-    done
-
-    while [[ $(kubectl -n ${namespace} get pods -l jmeter_mode=slave -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}' | sed 's/ //g') != "${validation_string}" ]]; do echo "$(kubectl -n ${namespace} get pods -l jmeter_mode=slave )" && sleep 1; done
-    logit "INFO" "Finish scaling the number of pods."
+    logit "WARN" "Helm environment file not found: ${helm_env_file} (skipped)"
 fi
+
+if [ -f "${project_deploy_values}" ]; then
+    logit "INFO" "Using project deploy values: ${project_deploy_values}"
+    helm_cmd+=( -f "${project_deploy_values}" )
+fi
+
+helm_cmd+=( -f "${run_values_file}" )
+
+logit "INFO" "Deploying jmeter resources via helm release=${helm_release}"
+if ! "${helm_cmd[@]}"; then
+    logit "ERROR" "Helm deploy failed for release=${helm_release}, aborting test startup"
+    rm -f "${run_values_file}"
+    exit 1
+fi
+rm -f "${run_values_file}"
+
+logit "INFO" "Waiting for pods to be ready"
+end=${target_injectors}
+validation_string=""
+for ((i=1; i<=end; i++))
+do
+    validation_string=${validation_string}"True"
+done
+
+while [[ $(kubectl -n ${namespace} get pods -l jmeter_mode=slave -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}' | sed 's/ //g') != "${validation_string}" ]]; do echo "$(kubectl -n ${namespace} get pods -l jmeter_mode=slave )" && sleep 1; done
+logit "INFO" "Finish scaling the number of pods."
 
 #Get Master pod details
 logit "INFO" "Waiting for master pod to be available"

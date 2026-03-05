@@ -1,0 +1,11 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+image:
+  repository: nginx
+  tag: "1.25"
+  pullPolicy: IfNotPresent
+
+ingress:
+  host: report.example.com

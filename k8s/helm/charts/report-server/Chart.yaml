@@ -1,0 +1,6 @@
+apiVersion: v2
+name: report-server
+description: Nginx report server for jmeter HTML output
+type: application
+version: 0.1.0
+appVersion: "1.25"

@@ -1,0 +1,46 @@
+# 專案層 Helm 覆蓋範本
+# 使用方式：複製到 scenario/<project>/deploy.values.yaml
+# start_test.sh 會自動載入該檔並與環境 values、本次 run-values 疊加
+
+# 覆蓋 jmeter chart values（k8s/helm/charts/jmeter/values.yaml）
+
+master:
+  image:
+    repository: rbillon59/jmeter-k8s-base
+    tag: "5.6.3"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "1024Mi"
+      cpu: "500m"
+    limits:
+      memory: "1536Mi"
+      cpu: "1500m"
+
+slave:
+  image:
+    repository: rbillon59/jmeter-k8s-base
+    tag: "5.6.3"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "768Mi"
+      cpu: "500m"
+    limits:
+      memory: "1536Mi"
+      cpu: "1500m"
+
+# 預設 injector 數；若 start_test.sh 有 -i，會被 run-values 覆蓋
+slaves:
+  parallelism: 5
+
+# 若專案需要特定 hostAlias（可選）
+hostAliases:
+  - ip: 192.168.29.132
+    hostnames:
+      - sbdemo.example.com
+
+# 若專案需要不同報表 PVC 規格（可選）
+pvc:
+  storageClassName: nfs-csi
+  size: 5Gi

@@ -1,0 +1,41 @@
+# module 專案層 Helm 覆蓋
+# start_test.sh 會自動載入此檔，並與 k8s/helm/environments/<env>.yaml + run-values 疊加
+
+master:
+  image:
+    repository: rbillon59/jmeter-k8s-base
+    tag: "5.6.3"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "1024Mi"
+      cpu: "500m"
+    limits:
+      memory: "1536Mi"
+      cpu: "1500m"
+
+slave:
+  image:
+    repository: rbillon59/jmeter-k8s-base
+    tag: "5.6.3"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "768Mi"
+      cpu: "500m"
+    limits:
+      memory: "1536Mi"
+      cpu: "1500m"
+
+# 預設 injector 數；若執行時有 -i，會被覆蓋
+slaves:
+  parallelism: 5
+
+hostAliases:
+  - ip: 192.168.29.132
+    hostnames:
+      - sbdemo.example.com
+
+pvc:
+  storageClassName: nfs-csi
+  size: 5Gi

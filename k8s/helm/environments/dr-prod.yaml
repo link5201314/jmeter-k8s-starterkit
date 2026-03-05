@@ -1,0 +1,62 @@
+global:
+  imageRegistry: "registry.dr-prod.local"
+  imagePullSecrets:
+    - dr-prod-regcred
+
+jmeter:
+  master:
+    image:
+      repository: perf/jmeter-k8s-base
+      tag: "5.6.3"
+    resources:
+      requests:
+        memory: "2048Mi"
+        cpu: "1000m"
+      limits:
+        memory: "4096Mi"
+        cpu: "2000m"
+  slave:
+    image:
+      repository: perf/jmeter-k8s-base
+      tag: "5.6.3"
+    resources:
+      requests:
+        memory: "1024Mi"
+        cpu: "1000m"
+      limits:
+        memory: "2048Mi"
+        cpu: "2000m"
+
+influxdb:
+  image:
+    repository: thirdparty/influxdb
+    tag: "1.8"
+
+cleaner:
+  image:
+    repository: bitnami/kubectl
+    tag: "1.31.0"
+
+report-server:
+  image:
+    repository: thirdparty/nginx
+    tag: "1.25"
+  ingress:
+    host: report.dr-prod.example.com
+
+telegraf:
+  image:
+    repository: thirdparty/telegraf
+    tag: "1.5.2"
+
+wiremock:
+  image:
+    repository: perf/wiremock-loadtest
+    tag: "3.9.1-1"
+
+grafana:
+  image:
+    repository: thirdparty/grafana/grafana
+    tag: "7.3.3"
+  ingress:
+    host: grafana.dr-prod.example.com

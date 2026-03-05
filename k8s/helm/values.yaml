@@ -1,0 +1,24 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+jmeter:
+  enabled: true
+
+influxdb:
+  enabled: true
+
+cleaner:
+  enabled: true
+
+report-server:
+  enabled: true
+
+telegraf:
+  enabled: true
+
+wiremock:
+  enabled: true
+
+grafana:
+  enabled: true
