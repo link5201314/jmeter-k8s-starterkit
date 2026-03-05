@@ -195,34 +195,6 @@ You can do this for the generated report and the JTL for example.
 
 ## 快速使用（建議）
 
-```
-# 建議部署至performance-test namespace
-# 但
-# 建立K8S資源
-kubectl create -R -f jmeter/ -n performance-test
-kubectl create -R -f tool/influxdb/ -n performance-test
-
-kubectl create -f tool/telegraf/telegraf-operator.yaml
-kubectl create -f tool/telegraf/telegraf-configmap.yaml -n performance-test
-kubectl create -f tool/telegraf/telegraf-daemonset.yaml -n performance-test
-
-kubectl create -R -f tool/grafana/ -n performance-test
-kubectl create -R -f tool/cleaner/ -n performance-test
-kubectl create -R -f tool/report-server/ -n performance-test
-
-#刪除K8S資源
-kubectl delete -R -f tool/report-server/ -n performance-test
-kubectl delete -R -f tool/cleaner/ -n performance-test
-kubectl delete -R -f tool/grafana/ -n performance-test
-
-kubectl delete -f tool/telegraf/telegraf-operator.yaml
-kubectl delete -f tool/telegraf/telegraf-configmap.yaml -n performance-test
-kubectl delete -f tool/telegraf/telegraf-daemonset.yaml -n performance-test
-
-kubectl delete -R -f tool/influxdb/ -n performance-test
-kubectl delete -R -f jmeter/ -n performance-test
-```
-
 ```bash
 ./start_test.sh -j my-scenario.jmx -n default -i 20 -c -m -r \
   -E prod \
@@ -233,12 +205,7 @@ kubectl delete -R -f jmeter/ -n performance-test
 
 停止測試：
 ```bash
-./stop_test.sh -n default
-```
-
-若未傳入 namespace，會自動使用 `default`，並輸出提示訊息。
-
-```bash
 ./stop_test.sh
-# [INFO] Namespace not provided, using default namespace: default
 ```
+
+> `stop_test.sh` 會使用目前 shell 的 `namespace` 變數；請先確認已設定對應 namespace。
