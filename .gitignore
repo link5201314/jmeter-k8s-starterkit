@@ -22,6 +22,9 @@ __pycache__/
 # Webapp runtime artifacts (keep directories via .gitkeep)
 webapp/data/*
 !webapp/data/.gitkeep
+!webapp/data/secrets/
+webapp/data/secrets/*
+!webapp/data/secrets/.gitkeep
 webapp/logs/*
 !webapp/logs/.gitkeep
 webapp/tmp/*

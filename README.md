@@ -40,6 +40,30 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 3. 在 k8s 執行 `kubectl rollout restart deploy/jmeter-webapp`
 4. 以 pod `imageID`（`@sha256:...`）比對遠端 digest
 
+### Webapp 新增功能：資料庫還原（模擬送出）
+
+- 新增頁面：`/db-restore`
+- 可選環境來源：`config/jmeter.<env>.env`
+- 需在各環境檔新增：`JMETER_FLASHBACK_DB_API=<endpoint-url>`
+- 功能按鈕（目前僅預覽，不會真的發送）
+  1. 建立 Flashback 任務
+  2. 查詢任務狀態
+  3. 查詢所有任務
+  4. 取消任務
+
+API Key / Token 請放在（已加入忽略規則）：
+
+- `webapp/data/secrets/db_restore_tokens.json`
+
+範例格式：
+
+```json
+{
+  "lab": "your-lab-token",
+  "dr-prod": "your-dr-prod-token"
+}
+```
+
 完整 webapp 說明（含登入權限、image 推送、digest 驗證、k8s 啟動）請見：`webapp/README.md`
 
 若遇到「頁面卡住 / 推版後仍舊版 / 找不到 webapp pod」等問題，可直接參考 `webapp/README.md` 的 **常見問題排查（Troubleshooting）** 章節。

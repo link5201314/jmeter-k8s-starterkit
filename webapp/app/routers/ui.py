@@ -6,7 +6,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from webapp.app.core.config import HELM_ENV_DIR, REPORT_DIR, SCENARIO_DIR
+from webapp.app.core.config import CONFIG_DIR, HELM_ENV_DIR, REPORT_DIR, SCENARIO_DIR
 from webapp.app.services.auth_service import (
     GROUPS,
     can_drive_tests,
@@ -23,6 +23,7 @@ from webapp.app.services.auth_service import (
 )
 from webapp.app.services.file_service import ensure_subpath
 from webapp.app.services.report_service import discover_reports
+from webapp.app.services.db_restore_service import list_restore_envs
 
 router = APIRouter()
 templates = Jinja2Templates(directory="webapp/app/templates")
@@ -145,6 +146,19 @@ def tests_page(request: Request):
         return user
     projects = _list_projects()
     return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects}))
+
+
+@router.get("/db-restore")
+def db_restore_page(request: Request):
+    user = _drive_tests_required(request)
+    if isinstance(user, Response):
+        return user
+
+    envs = list_restore_envs(CONFIG_DIR)
+    return templates.TemplateResponse(
+        "db_restore.html",
+        _template_context(request, {"envs": envs}),
+    )
 
 
 @router.get("/configs")

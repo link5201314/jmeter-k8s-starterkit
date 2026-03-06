@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header">資料庫還原（模擬送出）</div>
+  <div class="card-body">
+    <form id="db-restore-form" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">環境</label>
+        <select class="form-select" name="env" required>
+          {% for env in envs %}
+          <option value="{{ env }}">{{ env }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">任務 ID（查詢/取消）</label>
+        <input class="form-control" name="task_id" placeholder="job-123456">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">專案（建立任務）</label>
+        <input class="form-control" name="project" placeholder="demoweb">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">備註（建立任務）</label>
+        <input class="form-control" name="note" placeholder="manual restore">
+      </div>
+      <div class="col-12 d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-primary" data-action="create">1 建立 Flashback 任務</button>
+        <button type="button" class="btn btn-outline-primary" data-action="status">2 查詢任務狀態</button>
+        <button type="button" class="btn btn-outline-primary" data-action="list">3 查詢所有任務</button>
+        <button type="button" class="btn btn-outline-danger" data-action="cancel">4 取消任務</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">將發送的 API 內容（預覽）</div>
+  <div class="card-body">
+    <pre id="preview-output" class="yaml-preview"># 尚未操作</pre>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const form = document.getElementById("db-restore-form");
+    const output = document.getElementById("preview-output");
+
+    const toParams = (formData) => {
+      const params = new URLSearchParams();
+      for (const [k, v] of formData.entries()) {
+        params.append(k, String(v || ""));
+      }
+      return params;
+    };
+
+    const render = (data) => {
+      output.textContent = JSON.stringify(data, null, 2);
+    };
+
+    async function doPreview(action) {
+      const fd = new FormData(form);
+      fd.set("action", action);
+      output.textContent = "讀取中...";
+
+      try {
+        const response = await fetch("/api/db-restore/preview", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: toParams(fd).toString(),
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || `HTTP ${response.status}`);
+        }
+        render(payload);
+      } catch (error) {
+        output.textContent = `錯誤: ${error.message}`;
+      }
+    }
+
+    document.querySelectorAll("button[data-action]").forEach((button) => {
+      button.addEventListener("click", () => doPreview(button.dataset.action || ""));
+    });
+  })();
+</script>
+{% endblock %}

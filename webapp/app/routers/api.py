@@ -24,6 +24,12 @@ from webapp.app.services.file_service import ensure_subpath, read_text, write_te
 from webapp.app.services.process_service import get_jobs_status, run_background
 from webapp.app.services.report_service import make_report_zip
 from webapp.app.services.auth_service import require_authenticated, require_drive_tests
+from webapp.app.services.db_restore_service import (
+    build_preview_request,
+    get_flashback_endpoint,
+    list_restore_envs,
+    load_env_token,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
 
@@ -222,6 +228,47 @@ def runtime_status(namespace: str = "performance-test"):
             "name": master_pod_name,
             "phase": master_pod_phase,
         },
+    }
+
+
+@router.post("/db-restore/preview", dependencies=[Depends(require_drive_tests)])
+def db_restore_preview(
+    env: str = Form(...),
+    action: str = Form(...),
+    task_id: str = Form(""),
+    project: str = Form(""),
+    note: str = Form(""),
+):
+    env_name = env.strip()
+    valid_envs = list_restore_envs(CONFIG_DIR)
+    if env_name not in valid_envs:
+        raise HTTPException(400, f"Unknown env: {env_name}")
+
+    endpoint = get_flashback_endpoint(CONFIG_DIR, env_name)
+    secret_file = REPO_ROOT / "webapp" / "data" / "secrets" / "db_restore_tokens.json"
+    token = load_env_token(secret_file, env_name)
+
+    try:
+        preview = build_preview_request(
+            endpoint=endpoint,
+            token=token,
+            action=action,
+            task_id=task_id,
+            project=project,
+            note=note,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    warnings: list[str] = []
+    if not token:
+        warnings.append(f"Token not found for env={env_name}. Please set {secret_file.relative_to(REPO_ROOT)}")
+
+    return {
+        "ok": True,
+        "env": env_name,
+        "preview": preview,
+        "warnings": warnings,
     }
 
 

@@ -7,6 +7,7 @@
 - 管理專案 `.env` / `report-meta.env` 與上傳 JMX
 - 上傳 dataset CSV
 - 瀏覽並下載報告（index 或 ZIP）
+- 資料庫還原工作（模擬送出 API 預覽）
 - 網站登入與使用者/群組管理
 
 ## 帳號與權限
@@ -45,6 +46,7 @@ webapp/
     │   ├── process_service.py
     │   ├── file_service.py
     │   ├── auth_service.py
+    │   ├── db_restore_service.py
     │   └── report_service.py
     ├── templates/
     │   ├── base.html
@@ -53,6 +55,7 @@ webapp/
     │   ├── configs.html
     │   ├── projects.html
     │   ├── datasets.html
+    │   ├── db_restore.html
     │   └── reports.html
     └── static/
         └── app.css
@@ -67,11 +70,42 @@ webapp/
 - `app/services/process_service.py`: 背景執行 shell 腳本與狀態追蹤
 - `app/services/file_service.py`: 安全檔案讀寫
 - `app/services/auth_service.py`: 使用者檔案儲存、密碼雜湊驗證與群組權限
+- `app/services/db_restore_service.py`: 還原 API 目標端點讀取與請求預覽組裝
 - `app/services/report_service.py`: 報告列舉與 ZIP 打包
 - `app/templates/*`: UI 頁面
 - `app/static/app.css`: 基本樣式
 - `Dockerfile`: 容器化（內建 kubectl/helm）
 - `requirements.txt`: Python 套件
+
+## 資料庫還原頁面（模擬送出）
+
+- 頁面路徑：`/db-restore`
+- 依 `config/jmeter.<env>.env` 自動列出可選環境
+- 每個按鈕都只顯示「將發送的 API 內容」，不會真的呼叫對接服務
+
+按鈕功能：
+
+1. 建立 Flashback 任務
+2. 查詢任務狀態
+3. 查詢所有任務
+4. 取消任務
+
+環境檔需設定：
+
+- `JMETER_FLASHBACK_DB_API=<endpoint-url>`
+
+API Key / Token 存放位置（已加到 `.gitignore`）：
+
+- `webapp/data/secrets/db_restore_tokens.json`
+
+範例：
+
+```json
+{
+    "lab": "your-lab-token",
+    "dr-prod": "your-dr-prod-token"
+}
+```
 
 ## 本機啟動
 

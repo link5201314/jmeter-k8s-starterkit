@@ -27,7 +27,9 @@
 - [ ] [report][P3] 報告批次下載加入檔名規則與大小限制評估（驗收：規則文件化）
 - [ ] [auth][P3] Viewer 群組導入成本與維運效益分析（驗收：提出採用/不採用建議）
 - [ ] [ux][P3] Logs 頁面後續優化提案（驗收：列出 2~3 個低風險改善項）
-
+- [ ] [webapp][P1] db-restore（目前模擬）待還原 API ready 後改為真實呼叫（驗收：四種操作可實際呼叫、顯示成功/失敗、保留 preview 模式開關）
+- [ ] [security][P1] db_restore_tokens.json 改為 K8s Secret 掛載（驗收：repo 無明文 token，webapp 可正常讀取）
+- [ ] 
 ---
 
 ## Done (Keep short)
