@@ -272,7 +272,7 @@ jmeter-k8s-starterkit/
 `start_test.sh` 除了原本參數外，新增：
 
 - `-E <env>`：測試環境（如 `prod/uat/sit/pt`）
-- `-V <versions>`：版本資訊（建議以 `;` 分隔）
+- `-V <versions>`：版本資訊（建議以 `,` 分隔）
 - `-N <note>`：備註
 - `-F <file>`：指定 metadata 檔名（預設 `report-meta.env`，相對路徑會視為 `scenario/<project>/` 底下）
 - `--helm-env <name>`：指定 Helm 環境值檔名稱（對應 `k8s/helm/environments/<name>.yaml`，預設 `lab`）
