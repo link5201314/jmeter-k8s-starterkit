@@ -401,7 +401,7 @@ kubectl delete -f k8s/metric-server.yaml
   --helm-env lab \
   --helm-release jmeter-runtime \
   -E prod \
-  -V "tip-web=1.0.1;gemfire=2.2.3" \
+  -V "tip-web=1.0.1,gemfire=2.2.3" \
   -N "壓測前驗證版" \
   -F report-meta.env
 ```
@@ -467,7 +467,7 @@ kubectl delete -f k8s/metric-server.yaml
   --helm-env lab \
   --helm-release jmeter-runtime \
   -E lab \
-  -V "tip-web=1.0.1;gemfire=2.2.3" \
+  -V "tip-web=1.0.1,gemfire=2.2.3" \
   -N "lab smoke + baseline" \
   -F report-meta.env
 
@@ -486,7 +486,7 @@ kubectl delete -f k8s/metric-server.yaml
   --helm-env dr-prod \
   --helm-release jmeter-runtime \
   -E dr-prod \
-  -V "tip-web=1.0.1;gemfire=2.2.3" \
+  -V "tip-web=1.0.1,gemfire=2.2.3" \
   -N "dr-prod full load" \
   -F report-meta.env
 
