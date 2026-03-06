@@ -24,11 +24,14 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 
 ## Webapp 管理介面（FastAPI）
 
+![Webapp 管理介面畫面](docs/images/webapp-ui.png)
+
 本專案包含一個 `webapp` 子系統（`webapp/`），提供網頁化操作能力，與本 starterkit 的關係如下：
 
 - `start_test.sh` / `stop_test.sh` 仍是核心執行腳本；webapp 是其 UI 管理入口
 - webapp 透過 Helm / kubectl 操作同一套 k8s 資源（同 namespace）
 - webapp 的報表與 master 共用 PVC，才能即時瀏覽測試報告
+- 參數治理採三層覆蓋用詞：環境值檔（`k8s/helm/environments/*.yaml`）→ 專案覆寫值（`scenario/<project>/deploy.values.yaml`）→ 本次執行值（`start_test.sh`）
 
 常見流程（摘要）：
 
@@ -172,26 +175,90 @@ You can do this for the generated report and the JTL for example.
 
 ## 本專案新增功能與修改（客製版）
 
-### 1) 參數前綴預處理（避免環境變數污染）
+快速導覽：
+
+- [1) 提供額外參數檔](#1-提供額外參數檔)
+- [2) 參數前綴預處理（避免環境變數污染）](#2-參數前綴預處理避免環境變數污染)
+- [3) 新增 CLI 參數](#3-新增-cli-參數)
+- [4) 報表 metadata 自動注入（搭配 -r）](#4-報表-metadata-自動注入搭配--r)
+- [5) jmeter-system.properties 自動帶入](#5-jmetersystemproperties-自動帶入)
+- [6) CSV 分檔流程強化](#6-csv-分檔流程強化)
+- [7) JMeter runtime 參數（建議改為環境分檔）](#7-jmeter-runtime-參數建議改為環境分檔)
+- [8) 三層覆蓋優先序（環境值檔 / 專案覆寫值 / 本次執行值）](#8-三層覆蓋優先序環境值檔--專案覆寫值--本次執行值)
+
+### 專案目錄結構描述
+
+```text
+jmeter-k8s-starterkit/
+├── start_test.sh / stop_test.sh / reset_pvc.sh / cleanup_released_pv.sh  # 核心操作腳本
+├── config/                # 環境層級參數（jmeter.<env>.env）
+├── k8s/helm/              # Helm umbrella chart 與環境 values
+├── scenario/              # 測試專案（JMX、.env、report-meta.env、deploy.values.yaml）
+│   ├── _template/         # 專案模板
+│   └── <project>/         # 實際測試專案（例如 demoweb、my-scenario）
+├── report/                # 測試產出報表（HTML、statistics.json、內容資源）
+├── webapp/                # FastAPI 管理介面（UI + API）
+└── docs/                  # 文件與圖片資源
+```
+
+補充說明：
+
+- `config/` 管「環境基線」，`scenario/<project>/` 管「專案與本次測試參數」。
+- `k8s/helm/environments/*.yaml` 放環境值，`scenario/<project>/deploy.values.yaml` 放專案覆寫值。
+- `webapp/` 透過同一套腳本與 Helm 資源操作測試流程，並讀取共用 PVC 中的報表。
+
+### 1) 提供額外參數檔 
+
+為了把「環境基線」與「專案參數」分離，本專案提供以下參數檔：
+
+- `config/jmeter.<env>.env`
+  - 用途：放環境層級設定（例如 lab / dr-prod 的 JVM heap 與共用參數）
+  - 範例：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
+  - 讀取時機：`start_test.sh` 依 `--helm-env` 或 fallback 規則載入
+
+- `scenario/<project>/.env`
+  - 用途：放該專案測試參數（threads、duration、host、port…）
+  - 作用：啟動時會轉成 JMeter `-G` 參數傳入 slave/master
+
+- `scenario/<project>/jmeter-system.properties`
+  - 用途：放 JMeter system properties（report granularity、apdex 等）
+  - 作用：若存在，會自動複製到 master/slave 並以 `-S` 帶入
+
+- `scenario/<project>/report-meta.env`
+  - 用途：放報表 metadata（Environment / Versions / Notes）
+  - 作用：搭配 `-r` 產報時注入到 HTML 報表
+
+建議配置原則：
+
+- 環境共用值放 `config/jmeter.<env>.env`
+- 專案差異值放 `scenario/<project>/.env`
+- 報表描述資訊放 `scenario/<project>/report-meta.env`
+
+
+### 2) 參數前綴預處理（避免環境變數污染）
 - 測試參數檔 `scenario/<project>/.env` 會先轉為 `JMETERTEST_*` 暫存變數，再轉成 JMeter `-G` 全域參數。
-- 報表 metadata 檔（預設 `report-meta.env`）會先轉為 `JMETERREPORT_*` 暫存變數，供報表注入使用。
+- 報表 metadata 檔（預設JMeter project目錄下 `report-meta.env`）會先轉為 `JMETERREPORT_*` 暫存變數，供報表注入使用。
 - 原始 `.env` / `report-meta.env` 不會被改寫。
 
 > 詳細說明請見：`docs/JMETER_PARAMETERS_PREFIX_PREPROCESS_GUIDE.md`
 
 ---
 
-### 2) 新增 CLI 參數
+### 3) 新增 CLI 參數
 `start_test.sh` 除了原本參數外，新增：
 
 - `-E <env>`：測試環境（如 `prod/uat/sit/pt`）
 - `-V <versions>`：版本資訊（建議以 `;` 分隔）
 - `-N <note>`：備註
 - `-F <file>`：指定 metadata 檔名（預設 `report-meta.env`，相對路徑會視為 `scenario/<project>/` 底下）
+- `--helm-env <name>`：指定 Helm 環境值檔名稱（對應 `k8s/helm/environments/<name>.yaml`，預設 `lab`）
+- `--helm-release <name>`：指定 jmeter runtime 的 Helm release 名稱（預設 `jmeter-runtime`）
+- `--helm-chart <path>`：指定 jmeter runtime Helm chart 路徑（預設 `k8s/helm/charts/jmeter`）
+- `--jmeter-env-file <path>`：明確指定 JMeter runtime env 檔（優先於 `config/jmeter.<helm-env>.env` / `config/jmeter.env`）
 
 ---
 
-### 3) 報表 metadata 自動注入（搭配 `-r`）
+### 4) 報表 metadata 自動注入（搭配 `-r`）
 啟用 `-r` 產報後，會將以下資訊注入 HTML 報表：
 - Environment
 - App Versions
@@ -201,7 +268,7 @@ You can do this for the generated report and the JTL for example.
 
 ---
 
-### 4) `jmeter-system.properties` 自動帶入
+### 5) `jmeter-system.properties` 自動帶入
 若 `scenario/<project>/jmeter-system.properties` 存在：
 - 會自動複製到 master/slave
 - 執行時自動加上 `-S <path>/jmeter-system.properties`
@@ -217,7 +284,7 @@ cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.pr
 
 ---
 
-### 5) CSV 分檔流程強化
+### 6) CSV 分檔流程強化
 啟用 `-c` 時：
 - 先保留原始 CSV header
 - 將資料列打散（shuffle）
@@ -226,7 +293,7 @@ cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.pr
 
 ---
 
-### 6) JMeter runtime 參數（建議改為環境分檔）
+### 7) JMeter runtime 參數（建議改為環境分檔）
 `start_test.sh` 會依序載入以下檔案（先找到先用）：
 
 1. `--jmeter-env-file <path>`（手動指定）
@@ -253,6 +320,10 @@ cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.pr
 - JVM heap：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
 
 可另外用 `scenario/<project>/deploy.values.yaml` 定義專案級部署參數，達成「環境（lab/dr-prod） + 專案 + 本次測試」三層覆蓋。
+
+### 8) 三層覆蓋優先序（環境值檔 / 專案覆寫值 / 本次執行值）
+
+延伸閱讀：[webapp/README.md 的同名章節](webapp/README.md#8-三層覆蓋優先序環境值檔--專案覆寫值--本次執行值)
 
 三層覆蓋優先序（由低到高）如下：
 
