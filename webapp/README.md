@@ -23,6 +23,13 @@
 - 非 `Admin` 只能覆蓋自己上傳的 JMX / Dataset
 - 非 `Admin` 嘗試覆蓋他人檔案時，API 會回 `403`
 
+## Logs 頁面（JMeter Pod Logs）UX 優化
+
+- JMeter Master/Slave Pod Logs 改為「左側 Pod 清單 + 右側單一 Pod 詳細 log」
+- 支援 Pod 關鍵字搜尋，快速定位特定 slave pod
+- 支援「只看異常 Pod（ERROR/WARN）」切換，排障時可先聚焦異常節點
+- Pod 清單提供異常摘要（E/W 計數）與狀態標記（正常/異常）
+
 ## 帳號與權限
 
 - 帳號資料儲存在 `webapp/data/users.json`

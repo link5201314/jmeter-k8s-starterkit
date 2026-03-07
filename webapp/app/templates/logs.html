@@ -16,6 +16,13 @@
     font-size: 0.9rem;
     max-height: 68vh;
   }
+  .jmeter-pod-list {
+    max-height: 62vh;
+    overflow: auto;
+  }
+  .jmeter-pod-item {
+    cursor: pointer;
+  }
 </style>
 <div class="card shadow-sm">
   <div class="card-header d-flex justify-content-between align-items-center">
@@ -142,8 +149,37 @@
           </div>
         </form>
 
-        <div id="jmeter-log-panels" class="vstack gap-3">
-          <div class="text-muted">尚未讀取</div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-8">
+            <label class="form-label">Pod 搜尋</label>
+            <input id="jmeter-log-pod-search" class="form-control" placeholder="輸入 Pod 名稱關鍵字（例如 jmeter-slave）">
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="jmeter-log-only-abnormal">
+              <label class="form-check-label" for="jmeter-log-only-abnormal">只看異常 Pod（ERROR/WARN）</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <span id="jmeter-log-pod-summary" class="badge text-bg-light">尚未讀取 Pod 清單</span>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div id="jmeter-log-pod-list" class="list-group jmeter-pod-list">
+              <div class="text-muted p-2">尚未讀取</div>
+            </div>
+          </div>
+          <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span id="jmeter-log-selected-title" class="badge text-bg-dark">尚未選取 Pod</span>
+              <span id="jmeter-log-selected-meta" class="badge text-bg-light">-</span>
+            </div>
+            <div id="jmeter-log-panels" class="vstack gap-3">
+              <div class="text-muted">請先讀取並選擇 Pod</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -365,15 +401,176 @@
     const jmeterLogHitPrev = document.getElementById("jmeter-log-hit-prev");
     const jmeterLogHitNext = document.getElementById("jmeter-log-hit-next");
     const jmeterLogHitInfo = document.getElementById("jmeter-log-hit-info");
+    const jmeterLogPodSearch = document.getElementById("jmeter-log-pod-search");
+    const jmeterLogOnlyAbnormal = document.getElementById("jmeter-log-only-abnormal");
+    const jmeterLogPodSummary = document.getElementById("jmeter-log-pod-summary");
+    const jmeterLogPodList = document.getElementById("jmeter-log-pod-list");
+    const jmeterLogSelectedTitle = document.getElementById("jmeter-log-selected-title");
+    const jmeterLogSelectedMeta = document.getElementById("jmeter-log-selected-meta");
 
     let jmeterLogTimer = null;
     let jmeterRawRows = [];
+    let jmeterVisibleRows = [];
     let jmeterFilterMode = "all";
     let jmeterFilterKeyword = "";
+    let jmeterSelectedKey = "";
     let jmeterHitIndex = -1;
 
+    const IGNORED_JMETER_WARN_PATTERNS = [
+      "WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release",
+    ];
+
+    const IGNORED_JMETER_ERROR_PATTERNS = [
+      "Please check the standard output of the target process for a detailed error message.",
+    ];
+
+    const IGNORED_JMETER_INFO_PATTERNS = [
+      "DataStrippingSampleSender: Using DataStrippingSampleSender for this run with stripAlsoOnError: true",
+    ];
+
+    const jmeterRowKey = (entry) => `${entry.mode || ""}::${entry.pod || ""}::${entry.container || ""}`;
+
+    const isIgnoredNoiseLine = (line) => {
+      const text = (line || "").trim();
+      if (!text) return false;
+      const allPatterns = [
+        ...IGNORED_JMETER_WARN_PATTERNS,
+        ...IGNORED_JMETER_ERROR_PATTERNS,
+        ...IGNORED_JMETER_INFO_PATTERNS,
+      ];
+      return allPatterns.some((pattern) => text.includes(pattern));
+    };
+
+    const jmeterStats = (content) => {
+      const lines = String(content || "").split("\n");
+      let errorCount = 0;
+      let warnCount = 0;
+
+      for (const line of lines) {
+        if (isIgnoredNoiseLine(line)) continue;
+        if (/\berror\b|exception|failed|traceback/i.test(line)) {
+          errorCount += 1;
+          continue;
+        }
+        if (/\bwarn\b/i.test(line)) {
+          warnCount += 1;
+        }
+      }
+
+      let severity = "normal";
+      if (errorCount > 0) severity = "error";
+      else if (warnCount > 0) severity = "warning";
+
+      return {
+        errorCount,
+        warnCount,
+        abnormal: errorCount > 0 || warnCount > 0,
+        severity,
+      };
+    };
+
+    const normalizeText = (value) => (value || "").toString().trim().toLowerCase();
+
+    function getVisibleJmeterRows() {
+      const keyword = normalizeText(jmeterLogPodSearch?.value);
+      const onlyAbnormal = Boolean(jmeterLogOnlyAbnormal?.checked);
+
+      const enriched = (Array.isArray(jmeterRawRows) ? jmeterRawRows : []).map((entry) => {
+        const stats = jmeterStats(entry.content || "");
+        return {
+          ...entry,
+          key: jmeterRowKey(entry),
+          ...stats,
+        };
+      });
+
+      const filtered = enriched.filter((entry) => {
+        if (onlyAbnormal && !entry.abnormal) return false;
+        if (!keyword) return true;
+        return normalizeText(entry.pod).includes(keyword) || normalizeText(entry.mode).includes(keyword);
+      });
+
+      filtered.sort((a, b) => {
+        const severityRank = { error: 0, warning: 1, normal: 2 };
+        const aRank = severityRank[a.severity] ?? 2;
+        const bRank = severityRank[b.severity] ?? 2;
+        if (aRank !== bRank) return aRank - bRank;
+        if ((a.mode || "") !== (b.mode || "")) return (a.mode || "").localeCompare(b.mode || "");
+        return (a.pod || "").localeCompare(b.pod || "");
+      });
+
+      return filtered;
+    }
+
+    function renderJmeterPodList() {
+      jmeterVisibleRows = getVisibleJmeterRows();
+      const errorPods = jmeterVisibleRows.filter((entry) => entry.severity === "error").length;
+      const warningPods = jmeterVisibleRows.filter((entry) => entry.severity === "warning").length;
+      const total = jmeterVisibleRows.length;
+
+      if (jmeterLogPodSummary) {
+        jmeterLogPodSummary.textContent = `可見 Pod ${total}（錯誤 ${errorPods}、警告 ${warningPods}）`;
+      }
+
+      if (!jmeterVisibleRows.length) {
+        jmeterSelectedKey = "";
+        jmeterLogPodList.innerHTML = '<div class="text-muted p-2">無符合 Pod</div>';
+        return;
+      }
+
+      const hasSelected = jmeterVisibleRows.some((entry) => entry.key === jmeterSelectedKey);
+      if (!hasSelected) {
+        jmeterSelectedKey = jmeterVisibleRows[0].key;
+      }
+
+      jmeterLogPodList.innerHTML = jmeterVisibleRows
+        .map((entry) => {
+          const active = entry.key === jmeterSelectedKey;
+          const statusBadge =
+            entry.severity === "error"
+              ? `<span class="badge text-bg-danger">錯誤</span>`
+              : entry.severity === "warning"
+                ? `<span class="badge text-bg-warning">警告</span>`
+                : `<span class="badge text-bg-success">正常</span>`;
+          const statsBadge = `<span class="badge text-bg-light">E:${entry.errorCount} W:${entry.warnCount}</span>`;
+          return `
+            <button type="button" class="list-group-item list-group-item-action jmeter-pod-item ${active ? "active" : ""}" data-row-key="${escapeHtml(entry.key)}">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-semibold">${escapeHtml(entry.pod || "(unknown)")}</span>
+                <span class="badge ${active ? "text-bg-light" : "text-bg-dark"}">${escapeHtml(entry.mode || "-")}</span>
+              </div>
+              <div class="d-flex gap-2">${statusBadge}${statsBadge}</div>
+            </button>
+          `;
+        })
+        .join("");
+
+      jmeterLogPodList.querySelectorAll("[data-row-key]").forEach((button) => {
+        button.addEventListener("click", () => {
+          jmeterSelectedKey = button.getAttribute("data-row-key") || "";
+          renderJmeterPodList();
+          applyJmeterLogFilter();
+        });
+      });
+    }
+
+    function selectedJmeterRow() {
+      if (!jmeterSelectedKey) return null;
+      return jmeterVisibleRows.find((entry) => entry.key === jmeterSelectedKey) || null;
+    }
+
     function applyJmeterLogFilter() {
-      const rows = Array.isArray(jmeterRawRows) ? jmeterRawRows : [];
+      const row = selectedJmeterRow();
+      if (!row) {
+        jmeterLogPanels.innerHTML = '<div class="text-muted">請先選擇 Pod</div>';
+        jmeterLogSelectedTitle.textContent = "尚未選取 Pod";
+        jmeterLogSelectedMeta.textContent = "-";
+        jmeterLogHitInfo.textContent = "命中 0/0";
+        jmeterHitIndex = -1;
+        return;
+      }
+
+      const lines = String(row.content || "").split("\n");
       const highlightTerms =
         jmeterFilterMode === "error"
           ? ["error"]
@@ -383,33 +580,29 @@
               ? [jmeterFilterKeyword.trim()]
               : [];
 
-      const matches = (content) => {
-        if (jmeterFilterMode === "error") return /error/i.test(content || "");
-        if (jmeterFilterMode === "warn") return /warn/i.test(content || "");
+      const matches = (line) => {
+        if (jmeterFilterMode === "error") return !isIgnoredNoiseLine(line) && /error/i.test(line || "");
+        if (jmeterFilterMode === "warn") return !isIgnoredNoiseLine(line) && /warn/i.test(line || "");
         if (jmeterFilterMode === "custom") {
           const keyword = (jmeterFilterKeyword || "").trim().toLowerCase();
-          return keyword ? (content || "").toLowerCase().includes(keyword) : true;
+          return keyword ? (line || "").toLowerCase().includes(keyword) : true;
         }
         return true;
       };
 
-      const filteredRows = rows.filter((entry) => matches(entry.content));
-      if (!filteredRows.length) {
-        jmeterLogPanels.innerHTML = '<div class="text-muted">無符合內容</div>';
-        jmeterHitIndex = -1;
-        jmeterLogHitInfo.textContent = "命中 0/0";
-        return;
-      }
+      const filteredText = lines.filter((line) => matches(line)).join("\n").trim();
+      const rendered = filteredText || "(無符合內容)";
 
-      jmeterLogPanels.innerHTML = filteredRows.map((entry) => `
-        <div>
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="badge text-bg-dark">${escapeHtml(entry.mode)} / ${escapeHtml(entry.pod)}</span>
-            <span class="badge text-bg-light">container: ${escapeHtml(entry.container)}</span>
-          </div>
-          <pre class="yaml-preview log-readable">${highlightText(entry.content || "(無內容)", highlightTerms)}</pre>
-        </div>
-      `).join("");
+      jmeterLogPanels.innerHTML = `<pre class="yaml-preview log-readable">${highlightText(rendered, highlightTerms)}</pre>`;
+
+      const severityText =
+        row.severity === "error"
+          ? "錯誤"
+          : row.severity === "warning"
+            ? "警告"
+            : "正常";
+      jmeterLogSelectedTitle.textContent = `${row.mode} / ${row.pod}`;
+      jmeterLogSelectedMeta.textContent = `container: ${row.container} | ${severityText} E:${row.errorCount} W:${row.warnCount}`;
 
       jmeterHitIndex = -1;
       refreshHitNavigation(jmeterLogPanels, jmeterLogHitInfo, "jmeter", 0);
@@ -439,8 +632,15 @@
 
         jmeterRawRows = data.logs || [];
         if (!jmeterRawRows.length) {
+          jmeterVisibleRows = [];
+          jmeterSelectedKey = "";
+          jmeterLogPodSummary.textContent = "可見 Pod 0（錯誤 0、警告 0）";
+          jmeterLogPodList.innerHTML = '<div class="text-muted p-2">查無可讀取 Pod log</div>';
+          jmeterLogSelectedTitle.textContent = "尚未選取 Pod";
+          jmeterLogSelectedMeta.textContent = "-";
           jmeterLogPanels.innerHTML = '<div class="text-muted">查無可讀取 Pod log</div>';
         } else {
+          renderJmeterPodList();
           applyJmeterLogFilter();
         }
 
@@ -471,6 +671,14 @@
 
     jmeterLogAutoRefresh?.addEventListener("change", setupJmeterLogAutoRefresh);
     jmeterLogInterval?.addEventListener("change", setupJmeterLogAutoRefresh);
+    jmeterLogPodSearch?.addEventListener("input", () => {
+      renderJmeterPodList();
+      applyJmeterLogFilter();
+    });
+    jmeterLogOnlyAbnormal?.addEventListener("change", () => {
+      renderJmeterPodList();
+      applyJmeterLogFilter();
+    });
     jmeterLogFilterAll?.addEventListener("click", () => {
       jmeterFilterMode = "all";
       setFilterButtonState(jmeterLogFilterAll, jmeterLogFilterError, jmeterLogFilterWarn, jmeterLogFilterCustom, jmeterFilterMode);
@@ -502,7 +710,13 @@
     });
     jmeterLogClear?.addEventListener("click", () => {
       jmeterRawRows = [];
+      jmeterVisibleRows = [];
+      jmeterSelectedKey = "";
       jmeterHitIndex = -1;
+      jmeterLogPodList.innerHTML = '<div class="text-muted p-2">(已清空畫面)</div>';
+      jmeterLogPodSummary.textContent = "可見 Pod 0（錯誤 0、警告 0）";
+      jmeterLogSelectedTitle.textContent = "尚未選取 Pod";
+      jmeterLogSelectedMeta.textContent = "-";
       jmeterLogPanels.innerHTML = '<div class="text-muted">(已清空畫面)</div>';
       jmeterLogUpdated.className = "badge text-bg-secondary";
       jmeterLogUpdated.textContent = "已清空";

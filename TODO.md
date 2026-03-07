@@ -19,7 +19,7 @@
 
 ## Next (This Week)
 
-- [ ] [logs][P2] 優化 JMeter Slave Pod Logs 顯示（驗收：可讀性提升，查找單一 pod 更快）
+- [x] [logs][P2] 優化 JMeter Slave Pod Logs 顯示（驗收：可讀性提升，查找單一 pod 更快） ✅ 已完成（左側 Pod 清單 + 搜尋 + 只看異常）
 - [x] [auth][P3] 評估新增 Viewer 群組（驗收：權限矩陣與影響範圍文件化） ✅ 已完成（Viewer 僅允許 Reports/Logs）
 
 ## Later (Backlog)
