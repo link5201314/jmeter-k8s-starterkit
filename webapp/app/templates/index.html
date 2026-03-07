@@ -8,10 +8,15 @@
     {% if can_drive_tests %}
     <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/tests">測試驅動</a></div>
     {% endif %}
+
+    {% if can_manage_project_files %}
     <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/configs">設定管理</a></div>
     <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/projects">專案管理</a></div>
     <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/datasets">Dataset</a></div>
+    {% endif %}
+
     <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/reports">報告</a></div>
+    <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/logs">Logs</a></div>
     {% if can_manage_users %}
     <div class="col-md-4"><a class="btn btn-outline-primary w-100" href="/users">使用者管理</a></div>
     {% endif %}

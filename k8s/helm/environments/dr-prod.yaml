@@ -67,7 +67,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "latest"
+    tag: "2026.03.07-1"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:

@@ -15,7 +15,8 @@ from webapp.app.core.config import REPO_ROOT
 GROUP_ADMIN = "Admin"
 GROUP_EXECUTOR = "Executor"
 GROUP_TESTER = "Tester"
-GROUPS = (GROUP_ADMIN, GROUP_EXECUTOR, GROUP_TESTER)
+GROUP_VIEWER = "Viewer"
+GROUPS = (GROUP_ADMIN, GROUP_EXECUTOR, GROUP_TESTER, GROUP_VIEWER)
 
 _USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
 _USER_STORE_PATH = REPO_ROOT / "webapp" / "data" / "users.json"
@@ -273,10 +274,39 @@ def reset_user_password(username: str, new_password: str) -> None:
 
 def group_permissions(group: str) -> dict[str, bool]:
     if group == GROUP_ADMIN:
-        return {"manage_users": True, "drive_tests": True}
+        return {
+            "manage_users": True,
+            "drive_tests": True,
+            "manage_project_files": True,
+            "view_reports_logs": True,
+        }
     if group == GROUP_EXECUTOR:
-        return {"manage_users": False, "drive_tests": True}
-    return {"manage_users": False, "drive_tests": False}
+        return {
+            "manage_users": False,
+            "drive_tests": True,
+            "manage_project_files": True,
+            "view_reports_logs": True,
+        }
+    if group == GROUP_TESTER:
+        return {
+            "manage_users": False,
+            "drive_tests": False,
+            "manage_project_files": True,
+            "view_reports_logs": True,
+        }
+    if group == GROUP_VIEWER:
+        return {
+            "manage_users": False,
+            "drive_tests": False,
+            "manage_project_files": False,
+            "view_reports_logs": True,
+        }
+    return {
+        "manage_users": False,
+        "drive_tests": False,
+        "manage_project_files": False,
+        "view_reports_logs": False,
+    }
 
 
 def can_manage_users(user: dict | None) -> bool:
@@ -289,6 +319,12 @@ def can_drive_tests(user: dict | None) -> bool:
     if not user:
         return False
     return group_permissions(str(user.get("group", ""))).get("drive_tests", False)
+
+
+def can_manage_project_files(user: dict | None) -> bool:
+    if not user:
+        return False
+    return group_permissions(str(user.get("group", ""))).get("manage_project_files", False)
 
 
 def current_user_from_request(request: Request) -> dict | None:

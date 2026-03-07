@@ -22,10 +22,13 @@
         <input type="date" class="form-control" name="end_date" value="{{ selected_end_date }}">
       </div>
       <div class="col-md-2"><button class="btn btn-outline-primary w-100">篩選</button></div>
-      <div class="col-12 d-flex gap-2">
+      <div class="col-12 d-flex gap-2 align-items-center">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="quick-today">當日</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="quick-7days">近 7 天</button>
+        <button type="button" class="btn btn-sm btn-primary" id="download-filtered-zip">下載篩選結果 ZIP</button>
+        <span class="text-muted small">單次最多 100 個報告</span>
       </div>
+      <div class="col-12 d-none" id="batch-download-alert"></div>
     </form>
   </div>
 </div>
@@ -70,7 +73,19 @@
     const endInput = form.querySelector('input[name="end_date"]');
     const todayBtn = document.getElementById('quick-today');
     const last7Btn = document.getElementById('quick-7days');
-    if (!startInput || !endInput || !todayBtn || !last7Btn) return;
+    const batchBtn = document.getElementById('download-filtered-zip');
+    const alertBox = document.getElementById('batch-download-alert');
+    if (!startInput || !endInput || !todayBtn || !last7Btn || !batchBtn || !alertBox) return;
+
+    const showAlert = (message, kind = 'warning') => {
+      alertBox.className = `col-12 alert alert-${kind} py-2 mb-0`;
+      alertBox.textContent = message;
+    };
+
+    const hideAlert = () => {
+      alertBox.className = 'col-12 d-none';
+      alertBox.textContent = '';
+    };
 
     const toDateString = (date) => {
       const year = date.getFullYear();
@@ -80,6 +95,7 @@
     };
 
     todayBtn.addEventListener('click', () => {
+      hideAlert();
       const now = new Date();
       const dateStr = toDateString(now);
       startInput.value = dateStr;
@@ -88,12 +104,64 @@
     });
 
     last7Btn.addEventListener('click', () => {
+      hideAlert();
       const end = new Date();
       const start = new Date();
       start.setDate(start.getDate() - 6);
       startInput.value = toDateString(start);
       endInput.value = toDateString(end);
       form.submit();
+    });
+
+    batchBtn.addEventListener('click', async () => {
+      hideAlert();
+
+      const formData = new FormData(form);
+      const params = new URLSearchParams();
+      const project = String(formData.get('project') || 'all');
+      const startDate = String(formData.get('start_date') || '');
+      const endDate = String(formData.get('end_date') || '');
+      params.set('project', project);
+      params.set('start_date', startDate);
+      params.set('end_date', endDate);
+
+      batchBtn.disabled = true;
+      const originalText = batchBtn.textContent;
+      batchBtn.textContent = '打包中...';
+
+      try {
+        const response = await fetch(`/api/reports/download-zip-batch?${params.toString()}`);
+        if (!response.ok) {
+          let detail = `下載失敗（HTTP ${response.status}）`;
+          try {
+            const data = await response.json();
+            detail = data.detail || detail;
+          } catch (_error) {
+            detail = `下載失敗（HTTP ${response.status}）`;
+          }
+          showAlert(detail, response.status === 400 ? 'warning' : 'danger');
+          return;
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('content-disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        const filename = match ? match[1] : 'reports-batch.zip';
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (_error) {
+        showAlert('下載失敗，請稍後再試', 'danger');
+      } finally {
+        batchBtn.disabled = false;
+        batchBtn.textContent = originalText;
+      }
     });
   })();
 </script>

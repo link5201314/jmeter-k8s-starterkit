@@ -7,7 +7,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse
 
 from webapp.app.core.config import (
@@ -22,8 +22,13 @@ from webapp.app.core.config import (
 )
 from webapp.app.services.file_service import ensure_subpath, read_text, write_text
 from webapp.app.services.process_service import get_jobs_status, run_background
-from webapp.app.services.report_service import make_report_zip
-from webapp.app.services.auth_service import require_authenticated, require_drive_tests
+from webapp.app.services.report_service import make_report_zip, make_reports_zip, discover_reports
+from webapp.app.services.auth_service import (
+    require_authenticated,
+    require_drive_tests,
+    can_manage_project_files,
+    can_manage_users,
+)
 from webapp.app.services.db_restore_service import (
     build_preview_request,
     get_flashback_endpoint,
@@ -32,6 +37,16 @@ from webapp.app.services.db_restore_service import (
 )
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
+
+_MAX_BATCH_REPORT_DOWNLOAD = 100
+_UPLOAD_OWNER_STORE = REPO_ROOT / "webapp" / "data" / "upload_owners.json"
+
+
+def require_project_management(request: Request) -> dict:
+    user = require_authenticated(request)
+    if not can_manage_project_files(user):
+        raise HTTPException(status_code=403, detail="Viewer 群組僅可使用報告與 Logs 功能")
+    return user
 
 
 def _list_projects() -> list[str]:
@@ -75,6 +90,98 @@ def _dataset_matches_project(filename: str, selected_project: str, projects: lis
     if selected_project == "Others":
         return not any(filename.startswith(f"{name}_") for name in projects)
     return filename.startswith(f"{selected_project}_")
+
+
+def _safe_date_text(value: str) -> str:
+    return value.strip() if value else ""
+
+
+def _parse_filter_dates(start_date: str, end_date: str) -> tuple[datetime | None, datetime | None, str, str]:
+    selected_start_date = _safe_date_text(start_date)
+    selected_end_date = _safe_date_text(end_date)
+    start_at = None
+    end_at = None
+
+    if selected_start_date:
+        try:
+            start_at = datetime.strptime(selected_start_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise HTTPException(400, "start_date 格式錯誤，需為 YYYY-MM-DD") from exc
+
+    if selected_end_date:
+        try:
+            end_at = datetime.strptime(selected_end_date, "%Y-%m-%d")
+            end_at = end_at.replace(hour=23, minute=59, second=59)
+        except ValueError as exc:
+            raise HTTPException(400, "end_date 格式錯誤，需為 YYYY-MM-DD") from exc
+
+    if start_at and end_at and start_at > end_at:
+        raise HTTPException(400, "開始日期不可晚於結束日期")
+
+    return start_at, end_at, selected_start_date, selected_end_date
+
+
+def _read_upload_owner_store() -> dict:
+    if not _UPLOAD_OWNER_STORE.exists():
+        return {"project_jmx": {}, "dataset": {}}
+    with _UPLOAD_OWNER_STORE.open("r", encoding="utf-8") as fp:
+        data = json.load(fp)
+    if not isinstance(data, dict):
+        return {"project_jmx": {}, "dataset": {}}
+    if not isinstance(data.get("project_jmx"), dict):
+        data["project_jmx"] = {}
+    if not isinstance(data.get("dataset"), dict):
+        data["dataset"] = {}
+    return data
+
+
+def _write_upload_owner_store(data: dict) -> None:
+    _UPLOAD_OWNER_STORE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = _UPLOAD_OWNER_STORE.with_suffix(".tmp")
+    with tmp_path.open("w", encoding="utf-8") as fp:
+        json.dump(data, fp, ensure_ascii=False, indent=2)
+    tmp_path.replace(_UPLOAD_OWNER_STORE)
+
+
+def _normalized_username(user: dict) -> str:
+    return str(user.get("username", "")).strip().lower()
+
+
+def _owner_record(store: dict, section: str, key: str) -> dict | None:
+    section_data = store.get(section, {})
+    if not isinstance(section_data, dict):
+        return None
+    value = section_data.get(key)
+    if not isinstance(value, dict):
+        return None
+    return value
+
+
+def _set_owner_record(store: dict, section: str, key: str, username: str) -> None:
+    section_data = store.get(section)
+    if not isinstance(section_data, dict):
+        section_data = {}
+        store[section] = section_data
+    section_data[key] = {
+        "owner": username,
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def _assert_overwrite_allowed(target_exists: bool, confirm_overwrite: bool, user: dict, owner: dict | None) -> None:
+    if not target_exists:
+        return
+    if not confirm_overwrite:
+        raise HTTPException(409, "File already exists. Please confirm overwrite in UI.")
+    if can_manage_users(user):
+        return
+
+    current_user = _normalized_username(user)
+    owner_name = str((owner or {}).get("owner", "")).strip().lower()
+    if not owner_name:
+        raise HTTPException(403, "非 Admin 不可覆蓋既有檔案（缺少上傳者資訊）")
+    if owner_name != current_user:
+        raise HTTPException(403, "非 Admin 不可覆蓋他人上傳的檔案")
 
 
 def _kubectl_json(namespace: str, args: list[str]) -> dict | list | None:
@@ -272,73 +379,83 @@ def db_restore_preview(
     }
 
 
-@router.get("/configs/helm")
+@router.get("/configs/helm", dependencies=[Depends(require_project_management)])
 def get_helm_values(name: str):
     target = ensure_subpath(HELM_ENV_DIR, HELM_ENV_DIR / name)
     return {"name": name, "content": read_text(target)}
 
 
-@router.post("/configs/helm")
+@router.post("/configs/helm", dependencies=[Depends(require_project_management)])
 def save_helm_values(name: str = Form(...), content: str = Form(...)):
     target = ensure_subpath(HELM_ENV_DIR, HELM_ENV_DIR / name)
     write_text(target, content)
     return {"ok": True}
 
 
-@router.get("/configs/system-properties")
+@router.get("/configs/system-properties", dependencies=[Depends(require_project_management)])
 def get_system_properties(project: str):
     target = _safe_project_file(project, "jmeter-system.properties")
     return {"project": project, "content": read_text(target)}
 
 
-@router.post("/configs/system-properties")
+@router.post("/configs/system-properties", dependencies=[Depends(require_project_management)])
 def save_system_properties(project: str = Form(...), content: str = Form(...)):
     target = _safe_project_file(project, "jmeter-system.properties")
     write_text(target, content)
     return {"ok": True}
 
 
-@router.get("/projects/env")
+@router.get("/projects/env", dependencies=[Depends(require_project_management)])
 def get_project_env(project: str):
     target = _safe_project_file(project, ".env")
     return {"project": project, "content": read_text(target)}
 
 
-@router.post("/projects/env")
+@router.post("/projects/env", dependencies=[Depends(require_project_management)])
 def save_project_env(project: str = Form(...), content: str = Form(...)):
     target = _safe_project_file(project, ".env")
     write_text(target, content)
     return {"ok": True}
 
 
-@router.get("/projects/report-meta")
+@router.get("/projects/report-meta", dependencies=[Depends(require_project_management)])
 def get_project_report_meta(project: str):
     target = _safe_project_file(project, "report-meta.env")
     return {"project": project, "content": read_text(target)}
 
 
-@router.post("/projects/report-meta")
+@router.post("/projects/report-meta", dependencies=[Depends(require_project_management)])
 def save_project_report_meta(project: str = Form(...), content: str = Form(...)):
     target = _safe_project_file(project, "report-meta.env")
     write_text(target, content)
     return {"ok": True}
 
 
-@router.post("/projects/upload-jmx")
+@router.post("/projects/upload-jmx", dependencies=[Depends(require_project_management)])
 async def upload_project_jmx(
+    request: Request,
     project: str = Form(...),
     file: UploadFile = File(...),
     confirm_overwrite: bool = Form(False),
 ):
+    user = require_project_management(request)
+
     if not file.filename.endswith(".jmx"):
         raise HTTPException(400, "Only .jmx files are allowed")
 
     target = _safe_project_file(project, file.filename)
-    if target.exists() and not confirm_overwrite:
-        raise HTTPException(409, "File already exists. Please confirm overwrite in UI.")
+    owner_key = f"{project.strip().lower()}/{file.filename.strip().lower()}"
+    owner_store = _read_upload_owner_store()
+    existing_owner = _owner_record(owner_store, "project_jmx", owner_key)
+    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+
     target.parent.mkdir(parents=True, exist_ok=True)
     content = await file.read()
     target.write_bytes(content)
+
+    _set_owner_record(owner_store, "project_jmx", owner_key, str(user.get("username", "")))
+    _write_upload_owner_store(owner_store)
+
     return {"ok": True, "path": str(target.relative_to(REPO_ROOT))}
 
 
@@ -394,7 +511,7 @@ def get_jmeter_logs(namespace: str = "performance-test", target: str = "all", li
     }
 
 
-@router.get("/projects/jmx")
+@router.get("/projects/jmx", dependencies=[Depends(require_project_management)])
 def list_project_jmx(project: str):
     project_dir = ensure_subpath(SCENARIO_DIR, SCENARIO_DIR / project)
     files: list[dict[str, str | int]] = []
@@ -414,7 +531,7 @@ def list_project_jmx(project: str):
     return {"project": project, "files": files}
 
 
-@router.get("/projects/download-jmx")
+@router.get("/projects/download-jmx", dependencies=[Depends(require_project_management)])
 def download_project_jmx(project: str, name: str):
     if not name.endswith(".jmx"):
         raise HTTPException(400, "Only .jmx files are allowed")
@@ -426,12 +543,15 @@ def download_project_jmx(project: str, name: str):
     return FileResponse(str(target), filename=name)
 
 
-@router.post("/datasets/upload")
+@router.post("/datasets/upload", dependencies=[Depends(require_project_management)])
 async def upload_dataset(
+    request: Request,
     file: UploadFile = File(...),
     project: str = Form("Others"),
     confirm_overwrite: bool = Form(False),
 ):
+    user = require_project_management(request)
+
     if not file.filename.endswith(".csv"):
         raise HTTPException(400, "Only .csv files are allowed")
 
@@ -444,14 +564,21 @@ async def upload_dataset(
         raise HTTPException(400, f"Filename must start with '{selected_project}_' when project is '{selected_project}'")
 
     target = ensure_subpath(DATASET_DIR, DATASET_DIR / file.filename)
-    if target.exists() and not confirm_overwrite:
-        raise HTTPException(409, "File already exists. Please confirm overwrite in UI.")
+    owner_key = file.filename.strip().lower()
+    owner_store = _read_upload_owner_store()
+    existing_owner = _owner_record(owner_store, "dataset", owner_key)
+    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(await file.read())
+
+    _set_owner_record(owner_store, "dataset", owner_key, str(user.get("username", "")))
+    _write_upload_owner_store(owner_store)
+
     return {"ok": True, "path": str(target.relative_to(REPO_ROOT))}
 
 
-@router.get("/datasets/download")
+@router.get("/datasets/download", dependencies=[Depends(require_project_management)])
 def download_dataset(name: str):
     if not name.endswith(".csv"):
         raise HTTPException(400, "Only .csv files are allowed")
@@ -463,7 +590,7 @@ def download_dataset(name: str):
     return FileResponse(str(target), filename=name)
 
 
-@router.get("/datasets/download-zip")
+@router.get("/datasets/download-zip", dependencies=[Depends(require_project_management)])
 def download_datasets_zip(project: str = "Others"):
     selected_project = (project or "Others").strip() or "Others"
     projects = _list_projects()
@@ -511,3 +638,29 @@ def download_report_zip(report_dir: str):
     zip_path = REPO_ROOT / "webapp" / "tmp" / f"{safe_zip_name}.zip"
     make_report_zip(REPORT_DIR, report_dir, zip_path)
     return FileResponse(str(zip_path), filename=f"{safe_zip_name}.zip")
+
+
+@router.get("/reports/download-zip-batch")
+def download_report_batch_zip(
+    project: str = "all",
+    start_date: str = "",
+    end_date: str = "",
+):
+    start_at, end_at, selected_start_date, selected_end_date = _parse_filter_dates(start_date, end_date)
+
+    reports = discover_reports(REPORT_DIR, project=project, start_at=start_at, end_at=end_at)
+    if not reports:
+        raise HTTPException(404, "目前篩選條件沒有可下載的報告")
+    if len(reports) > _MAX_BATCH_REPORT_DOWNLOAD:
+        raise HTTPException(400, "最大單次下載100個報告，請調整篩選範圍")
+
+    report_dirs = [r["rel_path"] for r in reports]
+    safe_project = (project or "all").strip().lower().replace("/", "_").replace(" ", "_")
+    safe_start = (selected_start_date or "na").replace("-", "")
+    safe_end = (selected_end_date or "na").replace("-", "")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    zip_filename = f"reports-{safe_project}-{safe_start}-{safe_end}-{timestamp}.zip"
+    zip_path = REPO_ROOT / "webapp" / "tmp" / zip_filename
+
+    make_reports_zip(REPORT_DIR, report_dirs, zip_path)
+    return FileResponse(str(zip_path), filename=zip_filename)

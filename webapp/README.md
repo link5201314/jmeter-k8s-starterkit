@@ -6,9 +6,22 @@
 - 管理 Helm 環境 values 與專案 jmeter-system.properties
 - 管理專案 `.env` / `report-meta.env` 與上傳 JMX
 - 上傳 dataset CSV
-- 瀏覽並下載報告（index 或 ZIP）
+- 瀏覽並下載報告（單份 ZIP 或依篩選條件整批 ZIP）
 - 資料庫還原工作（模擬送出 API 預覽）
 - 網站登入與使用者/群組管理
+
+## 報告批次下載
+
+- 報告頁（`/reports`）提供「下載篩選結果 ZIP」按鈕
+- 下載內容會依目前篩選條件（專案、開始日期、結束日期）決定
+- 單次最多下載 `100` 個報告；若超過會提示：`最大單次下載100個報告，請調整篩選範圍`
+
+## 檔案覆蓋權限（JMX / Dataset）
+
+- 上傳者資訊記錄於 `webapp/data/upload_owners.json`
+- `Admin` 可覆蓋任意既有 JMX / Dataset
+- 非 `Admin` 只能覆蓋自己上傳的 JMX / Dataset
+- 非 `Admin` 嘗試覆蓋他人檔案時，API 會回 `403`
 
 ## 帳號與權限
 
@@ -21,6 +34,7 @@
 - `Admin`：可使用全部功能（含使用者管理）
 - `Executor`：除使用者管理外，其餘功能可用
 - `Tester`：不可使用使用者管理，且不可使用測試驅動
+- `Viewer`：僅可使用 **報告（/reports）** 與 **Logs（/logs）**；不可使用測試驅動、資料庫還原、設定管理、專案管理、Dataset、使用者管理
 
 ## 技術選型
 
