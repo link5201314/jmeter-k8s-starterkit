@@ -426,6 +426,7 @@
 
     const IGNORED_JMETER_INFO_PATTERNS = [
       "DataStrippingSampleSender: Using DataStrippingSampleSender for this run with stripAlsoOnError: true",
+      "StandardJMeterEngine: Thread will continue on error",
     ];
 
     const jmeterRowKey = (entry) => `${entry.mode || ""}::${entry.pod || ""}::${entry.container || ""}`;
