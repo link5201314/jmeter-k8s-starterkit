@@ -5,6 +5,7 @@ global:
 image:
   repository: grafana/grafana
   tag: "7.3.3"
+  digest: ""
   pullPolicy: IfNotPresent
 
 ingress:

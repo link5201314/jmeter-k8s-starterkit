@@ -81,7 +81,7 @@ spec:
 {{- end }}
       containers:
       - name: jmslave
-        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.slave.image.repository }}:{{ .Values.slave.image.tag }}"
+        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.slave.image.repository }}{{- if .Values.slave.image.digest }}@{{ .Values.slave.image.digest }}{{- else }}:{{ .Values.slave.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.slave.image.pullPolicy }}
         env:
         - name: MODE

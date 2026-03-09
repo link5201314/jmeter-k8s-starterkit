@@ -5,6 +5,7 @@ global:
 image:
   repository: nginx
   tag: "1.25"
+  digest: ""
   pullPolicy: IfNotPresent
 
 ingress:

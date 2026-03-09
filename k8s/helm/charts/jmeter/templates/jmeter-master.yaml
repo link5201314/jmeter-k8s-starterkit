@@ -82,7 +82,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: jmmaster
-        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.master.image.repository }}:{{ .Values.master.image.tag }}"
+        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.master.image.repository }}{{- if .Values.master.image.digest }}@{{ .Values.master.image.digest }}{{- else }}:{{ .Values.master.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.master.image.pullPolicy }}
         volumeMounts:
             - mountPath: /report

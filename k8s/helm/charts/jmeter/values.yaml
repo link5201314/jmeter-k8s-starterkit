@@ -6,6 +6,7 @@ master:
   image:
     repository: rbillon59/jmeter-k8s-base
     tag: "5.6.3"
+    digest: ""
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -19,6 +20,7 @@ slave:
   image:
     repository: rbillon59/jmeter-k8s-base
     tag: "5.6.3"
+    digest: ""
     pullPolicy: IfNotPresent
   resources:
     requests:

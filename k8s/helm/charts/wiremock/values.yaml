@@ -5,4 +5,5 @@ global:
 image:
   repository: rbillon59/wiremock-loadtest
   tag: "3.9.1-1"
+  digest: ""
   pullPolicy: Always

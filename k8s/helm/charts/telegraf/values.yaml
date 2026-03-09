@@ -5,6 +5,7 @@ global:
 image:
   repository: telegraf
   tag: "1.5.2"
+  digest: ""
   pullPolicy: IfNotPresent
 
 rbac:
