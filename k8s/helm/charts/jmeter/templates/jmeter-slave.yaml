@@ -1,3 +1,4 @@
+{{- if .Values.global.slave.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -83,8 +84,8 @@ spec:
 {{- end }}
       containers:
       - name: jmslave
-        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.slave.image.repository }}{{- if .Values.slave.image.digest }}@{{ .Values.slave.image.digest }}{{- else }}:{{ .Values.slave.image.tag }}{{- end }}"
-        imagePullPolicy: {{ .Values.slave.image.pullPolicy }}
+        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.global.slave.image.repository }}{{- if .Values.global.slave.image.digest }}@{{ .Values.global.slave.image.digest }}{{- else }}:{{ .Values.global.slave.image.tag }}{{- end }}"
+        imagePullPolicy: {{ .Values.global.slave.image.pullPolicy }}
         env:
         - name: MODE
           value: "SLAVE"
@@ -96,14 +97,15 @@ spec:
         - containerPort: 4445
         resources:
           requests:
-            memory: {{ .Values.slave.resources.requests.memory | quote }}
-            cpu: {{ .Values.slave.resources.requests.cpu | quote }}
+            memory: {{ .Values.global.slave.resources.requests.memory | quote }}
+            cpu: {{ .Values.global.slave.resources.requests.cpu | quote }}
           limits:
-            memory: {{ .Values.slave.resources.limits.memory | quote }}
-            cpu: {{ .Values.slave.resources.limits.cpu | quote }}
+            memory: {{ .Values.global.slave.resources.limits.memory | quote }}
+            cpu: {{ .Values.global.slave.resources.limits.cpu | quote }}
         livenessProbe:
           exec:
             command:
             - cat
             - /opt/jmeter/apache-jmeter/bin/jmeter
       restartPolicy: Never
+{{- end }}

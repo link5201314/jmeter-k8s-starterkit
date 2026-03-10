@@ -321,7 +321,10 @@ fi
 
 helm_cmd=(
     helm upgrade --install "${helm_release}" "${helm_chart_path}"
-    -n "${namespace}" --set pvc.enabled=${pvc_enabled}
+    -n "${namespace}"
+    --set global.pvc.enabled=${pvc_enabled}
+    --set global.master.enabled=true
+    --set global.slave.enabled=true
 )
 
 if [ "$(kubectl auth can-i create namespaces 2>/dev/null || echo no)" = "yes" ]; then
@@ -345,6 +348,8 @@ fi
 helm_cmd+=( -f "${run_values_file}" )
 
 logit "INFO" "Deploying jmeter resources via helm release=${helm_release}"
+# log helm command before執行
+logit "INFO" "Helm command: ${helm_cmd[*]}"
 if ! "${helm_cmd[@]}"; then
     logit "ERROR" "Helm deploy failed for release=${helm_release}, aborting test startup"
     rm -f "${run_values_file}"

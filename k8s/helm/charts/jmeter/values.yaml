@@ -2,39 +2,41 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
 
-master:
-  image:
-    repository: rbillon59/jmeter-k8s-base
-    tag: "5.6.3"
-    digest: ""
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      memory: "1024Mi"
-      cpu: "500m"
-    limits:
-      memory: "2048Mi"
-      cpu: "1000m"
+  master:
+    enabled: true
+    image:
+      repository: rbillon59/jmeter-k8s-base
+      tag: "5.6.3"
+      digest: ""
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: "1024Mi"
+        cpu: "500m"
+      limits:
+        memory: "2048Mi"
+        cpu: "1000m"
 
-slave:
-  image:
-    repository: rbillon59/jmeter-k8s-base
-    tag: "5.6.3"
-    digest: ""
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      memory: "512Mi"
-      cpu: "500m"
-    limits:
-      memory: "768Mi"
-      cpu: "1000m"
+  slave:
+    enabled: true
+    image:
+      repository: rbillon59/jmeter-k8s-base
+      tag: "5.6.3"
+      digest: ""
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "768Mi"
+        cpu: "1000m"
+  pvc:
+    enabled: true
+    storageClassName: nfs-csi
+    size: 5Gi
+    keepOnUninstall: true
 
 slaves:
   parallelism: 1
 
-pvc:
-  enabled: true
-  storageClassName: nfs-csi
-  size: 5Gi
-  keepOnUninstall: true

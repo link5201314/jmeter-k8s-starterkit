@@ -1,19 +1,19 @@
-{{- if .Values.pvc.enabled }}
+{{- if .Values.global.pvc.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: jmeter-data-dir-pvc
-  {{- if .Values.pvc.keepOnUninstall }}
+  {{- if .Values.global.pvc.keepOnUninstall }}
   annotations:
     helm.sh/resource-policy: keep
   {{- end }}
 spec:
   accessModes:
     - ReadWriteMany
-  {{- if .Values.pvc.storageClassName }}
-  storageClassName: {{ .Values.pvc.storageClassName }}
+  {{- if .Values.global.pvc.storageClassName }}
+  storageClassName: {{ .Values.global.pvc.storageClassName }}
   {{- end }}
   resources:
     requests:
-      storage: {{ .Values.pvc.size | default "5Gi" }}
+      storage: {{ .Values.global.pvc.size | default "5Gi" }}
 {{- end }}

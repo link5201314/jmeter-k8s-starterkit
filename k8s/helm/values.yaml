@@ -3,9 +3,7 @@ global:
   imagePullSecrets: []
 
 jmeter:
-  enabled: false
-  pvc:
-    enabled: true
+  enabled: true
 
 influxdb:
   enabled: true

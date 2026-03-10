@@ -35,14 +35,17 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 - **安裝整體環境（perf-stack）時**，必須在 `k8s/helm/environments/lab.yaml` 設定：
 
   ```yaml
-  jmeter:
-    enabled: false
+  global:
+    mastere:
+      enabled: false
+    slave:
+      enabled: false
     pvc:
       enabled: true
   ```
   這樣 umbrella chart 只會建立 PVC，不會建立 JMeter workload。
 
-- **啟動測試（start_test.sh）時**，必須帶入 `--pvc-enabled false`，即 `jmeter.pvc.enabled=false`，讓 runtime release 不會再建立 PVC，只動態建立/清除 JMeter master/slave/job 等資源。
+- **啟動測試（start_test.sh）時**，必須帶入 `--pvc-enabled false`，即 `global.pvc.enabled=false`，讓 runtime release 不會再建立 PVC，只動態建立/清除 JMeter master/slave/job 等資源，同時start_test.sh在啟動時會透過--set global.master.enabled=true與--set global.slave.enabled=true強制啟動jmeter。
 
 ### 為什麼要這樣設計？
 
@@ -50,7 +53,7 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 - 這種設計可確保 PVC 生命週期由 umbrella chart 統一管理，JMeter 測試可安全動態執行與清除。
 
 > **重點：**
-> - perf-stack 安裝時：jmeter.pvc.enabled=true
+> - perf-stack 安裝時：global.pvc.enabled=true
 > - start_test.sh 執行時：--pvc-enabled false
 
 請務必遵循此原則，才能避免 PVC 衝突與測試異常。
@@ -448,11 +451,37 @@ kubectl delete -f k8s/metric-server.yaml
 ```
 
 測試helm渲染：
+(測試後pvc可能只能手動建立)
 ```bash
 helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=true
 helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=false
 
 helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml
+helm template perf-stack k8s/helm -n performance-test -f k8s/helm/environments/dr-prod.yaml
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml -s charts/jmeter/templates/jmeter-master.yaml 
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml -s charts/jmeter/templates/jmeter-pvc.yaml 
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml -s charts/webapp/templates/webapp.yaml 
+
+
+helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test -f k8s/helm/environments/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s templates/jmeter-master.yaml 
+
+helm template jmeter-runtime k8s/helm/charts/influxdb -n performance-test -f k8s/helm/environments/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s templates/influxdb-deployment.yaml 
+
+helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test -f k8s/helm/environments/dr-prod.yaml  -s templates/jmeter-master.yaml 
+
+helm template jmeter-runtime k8s/helm/charts/influxdb -n performance-test -f k8s/helm/environments/dr-prod.yaml -s templates/influxdb-deployment.yaml 
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-master.yaml 
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-pvc.yaml
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-master.yaml 
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-pvc.yaml
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-slave-service.yaml
 ```
 
 > 建議：日常操作優先使用「僅 stoptest」；不要每次都 `-u`。在 `Retain` 類型 StorageClass 下，反覆刪除 PVC 會造成大量 `Released` PV 累積。

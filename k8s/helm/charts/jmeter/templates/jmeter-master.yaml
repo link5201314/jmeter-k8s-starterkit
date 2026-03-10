@@ -1,3 +1,4 @@
+{{- if .Values.global.master.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -84,8 +85,8 @@ spec:
         fsGroup: 1000
       containers:
       - name: jmmaster
-        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.master.image.repository }}{{- if .Values.master.image.digest }}@{{ .Values.master.image.digest }}{{- else }}:{{ .Values.master.image.tag }}{{- end }}"
-        imagePullPolicy: {{ .Values.master.image.pullPolicy }}
+        image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.global.master.image.repository }}{{- if .Values.global.master.image.digest }}@{{ .Values.global.master.image.digest }}{{- else }}:{{ .Values.global.master.image.tag }}{{- end }}"
+        imagePullPolicy: {{ .Values.global.master.image.pullPolicy }}
         volumeMounts:
             - mountPath: /report
               name: jmeter-data-dir
@@ -110,11 +111,11 @@ spec:
         - containerPort: 60000
         resources:
           requests:
-            memory: {{ .Values.master.resources.requests.memory | quote }}
-            cpu: {{ .Values.master.resources.requests.cpu | quote }}
+            memory: {{ .Values.global.master.resources.requests.memory | quote }}
+            cpu: {{ .Values.global.master.resources.requests.cpu | quote }}
           limits:
-            memory: {{ .Values.master.resources.limits.memory | quote }}
-            cpu: {{ .Values.master.resources.limits.cpu | quote }}
+            memory: {{ .Values.global.master.resources.limits.memory | quote }}
+            cpu: {{ .Values.global.master.resources.limits.cpu | quote }}
         livenessProbe:
           exec:
             command:
@@ -127,3 +128,4 @@ spec:
         - name: jmeter-data-dir
           persistentVolumeClaim:
             claimName: jmeter-data-dir-pvc
+{{- end }}

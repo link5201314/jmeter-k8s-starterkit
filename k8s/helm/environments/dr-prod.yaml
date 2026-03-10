@@ -2,10 +2,8 @@ global:
   imageRegistry: "bmcharbor.mgnt.mvdis.gov.tw"
   imagePullSecrets:
     - bmcharbor-auth
-
-jmeter:
-  enabled: false
   master:
+    enabled: false
     image:
       repository: qa_team/jmeter-k8s-jmeter-base
       tag: "5.6.3"
@@ -17,6 +15,7 @@ jmeter:
         memory: "4096Mi"
         cpu: "2000m"
   slave:
+    enabled: false
     image:
       repository: qa_team/jmeter-k8s-jmeter-base
       tag: "5.6.3"
@@ -39,7 +38,7 @@ influxdb:
 cleaner:
   image:
     repository: qa_team/jmeter-k8s-kubectl
-    tag: ""
+    tag: "20260310-1"
   cronjob:
     cleanupDelaySeconds: 30
 
