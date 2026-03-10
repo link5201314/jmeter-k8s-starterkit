@@ -4,6 +4,9 @@ kind: Ingress
 metadata:
   name: jmeter-webapp
 spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
   rules:
     - host: {{ .Values.ingress.host }}
       http:

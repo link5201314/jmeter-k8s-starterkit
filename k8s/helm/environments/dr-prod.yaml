@@ -47,6 +47,7 @@ report-server:
     tag: "1.25"
   ingress:
     host: jmeter-report-dr.mgnt.mvdis.gov.tw
+    ingressClassName: nginx
 
 telegraf:
   image:
@@ -64,8 +65,9 @@ grafana:
     tag: "7.3.3"
   ingress:
     host: jmeter-grafana-dr.mgnt.mvdis.gov.tw
+    ingressClassName: nginx
 
-webapp:
+webapp:we
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
@@ -74,3 +76,4 @@ webapp:
     useGlobalRegistry: true
   ingress:
     host: jmeter-web-dr.mgnt.mvdis.gov.tw
+    ingressClassName: nginx
