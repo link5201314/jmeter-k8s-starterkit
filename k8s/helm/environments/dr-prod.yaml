@@ -73,7 +73,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.03.10-offline1"
+    tag: "2026.03.10-offline7"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:
