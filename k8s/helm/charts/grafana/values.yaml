@@ -8,5 +8,9 @@ image:
   digest: ""
   pullPolicy: IfNotPresent
 
+pvc:
+  storageClassName: ""
+  size: 1Gi
+
 ingress:
   host: grafana.example.com

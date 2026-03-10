@@ -7,3 +7,7 @@ image:
   tag: "1.8"
   digest: ""
   pullPolicy: IfNotPresent
+
+pvc:
+  storageClassName: ""
+  size: 5Gi
