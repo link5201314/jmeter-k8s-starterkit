@@ -1,3 +1,4 @@
+{{- if .Values.pvc.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -9,7 +10,10 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
+  {{- if .Values.pvc.storageClassName }}
   storageClassName: {{ .Values.pvc.storageClassName }}
+  {{- end }}
   resources:
     requests:
-      storage: {{ .Values.pvc.size }}
+      storage: {{ .Values.pvc.size | default "5Gi" }}
+{{- end }}

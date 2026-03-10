@@ -4,6 +4,7 @@ global:
     - bmcharbor-auth
 
 jmeter:
+  enabled: false
   master:
     image:
       repository: qa_team/jmeter-k8s-jmeter-base
@@ -27,6 +28,7 @@ jmeter:
         memory: "2048Mi"
         cpu: "2000m"
   pvc:
+    enabled: true
     storageClassName: nfs-client
 
 influxdb:
@@ -37,7 +39,7 @@ influxdb:
 cleaner:
   image:
     repository: qa_team/jmeter-k8s-kubectl
-    tag: "20260310-1"
+    tag: ""
   cronjob:
     cleanupDelaySeconds: 30
 

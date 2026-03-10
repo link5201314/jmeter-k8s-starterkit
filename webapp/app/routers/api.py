@@ -253,6 +253,8 @@ def start_test(
         helm_env,
         "--helm-release",
         helm_release,
+        "--pvc-enabled",
+        "false",
     ]
     if copy_csv:
         cmd.append("-c")

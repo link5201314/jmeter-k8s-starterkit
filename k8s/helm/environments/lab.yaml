@@ -8,6 +8,8 @@ jmeter:
     - ip: 192.168.29.132
       hostnames:
         - sbdemo.example.com
+  pvc:
+    enabled: true
 
 grafana:
   ingress:
@@ -31,7 +33,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.03.10-offline1"
+    tag: "2026.03.10-offline7"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:

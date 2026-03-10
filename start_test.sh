@@ -43,11 +43,12 @@ usage()
   logit "INFO" "-E <env> test environment (e.g. prod/uat/sit/pt)"
   logit "INFO" "-V <versions> app versions, ';' separated (e.g. tip-web=1.0.1;gemfire=2.2.3)"
   logit "INFO" "-N <note> free-form notes"
-    logit "INFO" "-F <file> meta env file (REPORT_ENV/REPORT_VERSIONS/REPORT_NOTE)"
-    logit "INFO" "--helm-env <name> helm env values name under k8s/helm/environments (default: lab)"
-    logit "INFO" "--helm-release <name> helm release name for jmeter chart (default: jmeter-runtime)"
-    logit "INFO" "--helm-chart <path> helm chart path for jmeter resources (default: k8s/helm/charts/jmeter)"
-        logit "INFO" "--jmeter-env-file <path> explicit env file for JVM/resource overrides"
+  logit "INFO" "-F <file> meta env file (REPORT_ENV/REPORT_VERSIONS/REPORT_NOTE)"
+  logit "INFO" "--helm-env <name> helm env values name under k8s/helm/environments (default: lab)"
+  logit "INFO" "--helm-release <name> helm release name for jmeter chart (default: jmeter-runtime)"
+  logit "INFO" "--helm-chart <path> helm chart path for jmeter resources (default: k8s/helm/charts/jmeter)"
+  logit "INFO" "--jmeter-env-file <path> explicit env file for JVM/resource overrides"
+  logit "INFO" "--pvc-enabled <true|false> 是否由 helm 建立 PVC (預設: true)"
   exit 1
 }
 
@@ -74,10 +75,17 @@ while [[ $# -gt 0 ]]; do
     -E) report_env="$2"; shift 2 ;;
     -V) report_versions="$2"; shift 2 ;;
     -N) report_note="$2"; shift 2 ;;
-        --helm-env) helm_env="$2"; shift 2 ;;
-        --helm-release) helm_release="$2"; shift 2 ;;
-        --helm-chart) helm_chart_path="$2"; shift 2 ;;
-        --jmeter-env-file) jmeter_env_file_override="$2"; shift 2 ;;
+    --helm-env) helm_env="$2"; shift 2 ;;
+    --helm-release) helm_release="$2"; shift 2 ;;
+    --helm-chart) helm_chart_path="$2"; shift 2 ;;
+    --jmeter-env-file) jmeter_env_file_override="$2"; shift 2 ;;
+    --pvc-enabled)
+      if [[ "$2" == "true" || "$2" == "false" ]]; then
+        pvc_enabled="$2"; shift 2
+      else
+        logit "ERROR" "--pvc-enabled 需指定 true 或 false"; usage
+      fi
+      ;;
     -F)
       if [[ -n "$2" && "$2" != -* ]]; then
         meta_file="$2"; shift 2
@@ -305,9 +313,15 @@ run_values_file="$(mktemp)"
 logit "INFO" "Deleting previous jmeter jobs before helm upgrade"
 kubectl -n "${namespace}" delete job jmeter-master jmeter-slaves --ignore-not-found >/dev/null 2>&1 || true
 
+
+# pvc.enabled 預設 true，除非參數指定 false
+if [ -z "${pvc_enabled}" ]; then
+    pvc_enabled=true
+fi
+
 helm_cmd=(
     helm upgrade --install "${helm_release}" "${helm_chart_path}"
-    -n "${namespace}"
+    -n "${namespace}" --set pvc.enabled=${pvc_enabled}
 )
 
 if [ "$(kubectl auth can-i create namespaces 2>/dev/null || echo no)" = "yes" ]; then

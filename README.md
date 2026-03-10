@@ -22,6 +22,39 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 - 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
 - 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`）
 
+## 重要架構說明：JMeter、Webapp、Report-Server 共用 PVC
+
+本專案設計特性如下：
+
+- JMeter（動態執行）、Webapp（管理介面）、Report-Server（報表瀏覽）三者共用同一個 PVC（jmeter-data-dir-pvc），以便測試報告能即時產生與瀏覽。
+- JMeter 測試資源（master/slave/job）是動態建立、動態清除（由 cleanup job 自動移除），而 Webapp 與 Report-Server 則為長駐服務。
+- 因此，**PVC 的建立必須交由 Helm umbrella chart（perf-stack release）統一管理**，避免多個 Helm release 在同一 PVC 上產生 ownership 衝突。
+
+### 正確操作方式
+
+- **安裝整體環境（perf-stack）時**，必須在 `k8s/helm/environments/lab.yaml` 設定：
+
+  ```yaml
+  jmeter:
+    enabled: false
+    pvc:
+      enabled: true
+  ```
+  這樣 umbrella chart 只會建立 PVC，不會建立 JMeter workload。
+
+- **啟動測試（start_test.sh）時**，必須帶入 `--pvc-enabled false`，即 `jmeter.pvc.enabled=false`，讓 runtime release 不會再建立 PVC，只動態建立/清除 JMeter master/slave/job 等資源。
+
+### 為什麼要這樣設計？
+
+- 若多個 Helm release（如 perf-stack、jmeter-runtime）同時管理同一 PVC，會造成 Helm ownership annotation 衝突，導致安裝/升級/移除時出現錯誤。
+- 這種設計可確保 PVC 生命週期由 umbrella chart 統一管理，JMeter 測試可安全動態執行與清除。
+
+> **重點：**
+> - perf-stack 安裝時：jmeter.pvc.enabled=true
+> - start_test.sh 執行時：--pvc-enabled false
+
+請務必遵循此原則，才能避免 PVC 衝突與測試異常。
+
 ## Webapp 管理介面（FastAPI）
 
 ![Webapp 管理介面畫面](docs/images/webapp-ui.png)
@@ -412,6 +445,14 @@ kubectl delete -f k8s/metric-server.yaml
 
 # 停測後一併卸載 jmeter runtime (helm)
 ./stop_test.sh -n default -u --helm-release jmeter-runtime
+```
+
+測試helm渲染：
+```bash
+helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=true
+helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=false
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/lab.yaml
 ```
 
 > 建議：日常操作優先使用「僅 stoptest」；不要每次都 `-u`。在 `Retain` 類型 StorageClass 下，反覆刪除 PVC 會造成大量 `Released` PV 累積。
