@@ -69,8 +69,10 @@ spec:
             mbean  = "java.lang:type=Threading"
             attribute = "TotalStartedThreadCount,ThreadCount,DaemonThreadCount,PeakThreadCount"
     spec:
+    {{- if .Values.hostAliases }}
       hostAliases:
 {{ toYaml .Values.hostAliases | indent 6 }}
+    {{- end }}
 {{- if .Values.global.imagePullSecrets }}
       imagePullSecrets:
 {{- range .Values.global.imagePullSecrets }}

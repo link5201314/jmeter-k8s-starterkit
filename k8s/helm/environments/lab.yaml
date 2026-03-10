@@ -4,6 +4,10 @@ global:
 
 jmeter:
   enabled: false
+  hostAliases:
+    - ip: 192.168.29.132
+      hostnames:
+        - sbdemo.example.com
 
 grafana:
   ingress:

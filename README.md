@@ -459,6 +459,11 @@ kubectl delete -f k8s/metric-server.yaml
 
 ## 標準操作流程（建議）
 
+`hostAliases` 環境策略：
+
+- `lab`：保留 `jmeter.hostAliases`（用於無完整 DNS 的測試環境）
+- `dr-prod`：不設定 `hostAliases`（使用環境既有 DNS）
+
 ### A) Lab 環境
 
 ```bash
