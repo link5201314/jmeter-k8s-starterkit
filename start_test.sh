@@ -347,9 +347,10 @@ fi
 
 helm_cmd+=( -f "${run_values_file}" )
 
+logit "INFO" "Helm command: prepare!"
 logit "INFO" "Deploying jmeter resources via helm release=${helm_release}"
 # log helm command before執行
-logit "INFO" "Helm command: ${helm_cmd[*]}"
+logit "INFO" "Helm command: ${helm_cmd[@]}"
 if ! "${helm_cmd[@]}"; then
     logit "ERROR" "Helm deploy failed for release=${helm_release}, aborting test startup"
     rm -f "${run_values_file}"
