@@ -20,7 +20,7 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 - 基礎元件以 `perf-stack` release 管理（環境值檔：`k8s/helm/environments/*.yaml`）
 - 測試執行期資源以 `jmeter-runtime` release 管理（由 `start_test.sh` 動態部署）
 - 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
-- 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`）
+- 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`），主要因為這兩項元件在許多現有 K8s 平台環境中可能已經預先部署或由平台統一管理，為避免重複安裝或資源衝突，故獨立於本專案 Helm 管理之外，僅作參考，或本地乾淨的lab環境部署用。
 
 ## 重要架構說明：JMeter、Webapp、Report-Server 共用 PVC
 
