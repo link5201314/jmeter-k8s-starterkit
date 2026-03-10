@@ -171,7 +171,8 @@ def tests_page(request: Request):
     if isinstance(user, Response):
         return user
     projects = _list_projects()
-    return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects}))
+    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml")]) if HELM_ENV_DIR.exists() else []
+    return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects, "helm_envs": helm_envs}))
 
 
 @router.get("/db-restore")

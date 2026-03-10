@@ -1,4 +1,46 @@
+
+
 from __future__ import annotations
+import os
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Request
+from fastapi.responses import FileResponse
+
+from webapp.app.core.config import (
+    CONFIG_DIR,
+    DATASET_DIR,
+    HELM_ENV_DIR,
+    REPO_ROOT,
+    REPORT_DIR,
+    SCENARIO_DIR,
+    START_SCRIPT,
+    STOP_SCRIPT,
+)
+from webapp.app.services.file_service import ensure_subpath, read_text, write_text
+from webapp.app.services.process_service import get_jobs_status, run_background
+from webapp.app.services.report_service import make_report_zip, make_reports_zip, discover_reports
+from webapp.app.services.auth_service import (
+    require_authenticated,
+    require_drive_tests,
+    can_manage_project_files,
+    can_manage_users,
+)
+from webapp.app.services.db_restore_service import (
+    build_preview_request,
+    get_flashback_endpoint,
+    list_restore_envs,
+    load_env_token,
+)
+
+router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
+
+@router.get("/helm-envs", summary="List available helm environment yaml files")
+def list_helm_envs():
+    env_dir = HELM_ENV_DIR
+    if not env_dir.exists() or not env_dir.is_dir():
+        return {"files": []}
+    files = [f.name for f in env_dir.iterdir() if f.is_file() and f.suffix == ".yaml"]
+    return {"files": sorted(files)}
 
 import hashlib
 import json

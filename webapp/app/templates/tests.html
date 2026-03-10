@@ -25,7 +25,11 @@
       </div>
       <div class="col-md-3">
         <label class="form-label">Helm Env</label>
-        <input class="form-control" name="helm_env" value="lab">
+        <select class="form-select" name="helm_env">
+          {% for env in helm_envs %}
+          <option value="{{ env }}" {% if env == 'lab' %}selected{% endif %}>{{ env }}</option>
+          {% endfor %}
+        </select>
       </div>
       <div class="col-md-3">
         <label class="form-label">Helm Release</label>
