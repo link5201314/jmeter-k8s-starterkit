@@ -9,4 +9,3 @@ image:
   pullPolicy: IfNotPresent
 
 rbac:
-  serviceAccountNamespace: performance-test

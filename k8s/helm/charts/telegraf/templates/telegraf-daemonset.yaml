@@ -111,7 +111,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: telegraf
-  namespace: {{ .Values.rbac.serviceAccountNamespace }}
+  namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
   name: metrics-reader
