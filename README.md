@@ -44,6 +44,7 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
       enabled: true
   ```
   這樣 umbrella chart 只會建立 PVC，不會建立 JMeter workload。
+  mastere.enabled、slave.enabled需要放在global底下是為了helm install不論是對整個k8s/helm還是只安裝k8s/helm/charts/jmeter都能通用所必需的。
 
 - **啟動測試（start_test.sh）時**，必須帶入 `--pvc-enabled false`，即 `global.pvc.enabled=false`，讓 runtime release 不會再建立 PVC，只動態建立/清除 JMeter master/slave/job 等資源，同時start_test.sh在啟動時會透過--set global.master.enabled=true與--set global.slave.enabled=true強制啟動jmeter。
 
