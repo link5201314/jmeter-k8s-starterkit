@@ -277,6 +277,8 @@ def group_permissions(group: str) -> dict[str, bool]:
         return {
             "manage_users": True,
             "drive_tests": True,
+            "manage_configs": True,
+            "manage_projects": True,
             "manage_project_files": True,
             "view_reports_logs": True,
         }
@@ -284,6 +286,8 @@ def group_permissions(group: str) -> dict[str, bool]:
         return {
             "manage_users": False,
             "drive_tests": True,
+            "manage_configs": True,
+            "manage_projects": True,
             "manage_project_files": True,
             "view_reports_logs": True,
         }
@@ -291,6 +295,8 @@ def group_permissions(group: str) -> dict[str, bool]:
         return {
             "manage_users": False,
             "drive_tests": False,
+            "manage_configs": False,
+            "manage_projects": True,
             "manage_project_files": True,
             "view_reports_logs": True,
         }
@@ -298,12 +304,16 @@ def group_permissions(group: str) -> dict[str, bool]:
         return {
             "manage_users": False,
             "drive_tests": False,
+            "manage_configs": False,
+            "manage_projects": False,
             "manage_project_files": False,
             "view_reports_logs": True,
         }
     return {
         "manage_users": False,
         "drive_tests": False,
+        "manage_configs": False,
+        "manage_projects": False,
         "manage_project_files": False,
         "view_reports_logs": False,
     }
@@ -321,10 +331,20 @@ def can_drive_tests(user: dict | None) -> bool:
     return group_permissions(str(user.get("group", ""))).get("drive_tests", False)
 
 
-def can_manage_project_files(user: dict | None) -> bool:
+def can_manage_configs(user: dict | None) -> bool:
     if not user:
         return False
-    return group_permissions(str(user.get("group", ""))).get("manage_project_files", False)
+    return group_permissions(str(user.get("group", ""))).get("manage_configs", False)
+
+
+def can_manage_projects(user: dict | None) -> bool:
+    if not user:
+        return False
+    return group_permissions(str(user.get("group", ""))).get("manage_projects", False)
+
+
+def can_manage_project_files(user: dict | None) -> bool:
+    return can_manage_projects(user)
 
 
 def current_user_from_request(request: Request) -> dict | None:
@@ -345,6 +365,20 @@ def require_drive_tests(request: Request) -> dict:
     user = require_authenticated(request)
     if not can_drive_tests(user):
         raise HTTPException(status_code=403, detail="無測試驅動權限")
+    return user
+
+
+def require_manage_configs(request: Request) -> dict:
+    user = require_authenticated(request)
+    if not can_manage_configs(user):
+        raise HTTPException(status_code=403, detail="無設定管理權限")
+    return user
+
+
+def require_manage_projects(request: Request) -> dict:
+    user = require_authenticated(request)
+    if not can_manage_projects(user):
+        raise HTTPException(status_code=403, detail="無專案管理權限")
     return user
 
 

@@ -1,47 +1,4 @@
-
-
 from __future__ import annotations
-import os
-
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Request
-from fastapi.responses import FileResponse
-
-from webapp.app.core.config import (
-    CONFIG_DIR,
-    DATASET_DIR,
-    HELM_ENV_DIR,
-    REPO_ROOT,
-    REPORT_DIR,
-    SCENARIO_DIR,
-    START_SCRIPT,
-    STOP_SCRIPT,
-)
-from webapp.app.services.file_service import ensure_subpath, read_text, write_text
-from webapp.app.services.process_service import get_jobs_status, run_background
-from webapp.app.services.report_service import make_report_zip, make_reports_zip, discover_reports
-from webapp.app.services.auth_service import (
-    require_authenticated,
-    require_drive_tests,
-    can_manage_project_files,
-    can_manage_users,
-)
-from webapp.app.services.db_restore_service import (
-    build_preview_request,
-    get_flashback_endpoint,
-    list_restore_envs,
-    load_env_token,
-)
-
-router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
-
-@router.get("/helm-envs", summary="List available helm environment yaml files")
-def list_helm_envs():
-    env_dir = HELM_ENV_DIR
-    if not env_dir.exists() or not env_dir.is_dir():
-        return {"files": []}
-    files = [f.name for f in env_dir.iterdir() if f.is_file() and f.suffix == ".yaml"]
-    return {"files": sorted(files)}
-
 import hashlib
 import json
 import subprocess
@@ -68,8 +25,9 @@ from webapp.app.services.report_service import make_report_zip, make_reports_zip
 from webapp.app.services.auth_service import (
     require_authenticated,
     require_drive_tests,
-    can_manage_project_files,
     can_manage_users,
+    require_manage_configs,
+    require_manage_projects,
 )
 from webapp.app.services.db_restore_service import (
     build_preview_request,
@@ -80,15 +38,24 @@ from webapp.app.services.db_restore_service import (
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
 
+@router.get("/helm-envs", summary="List available helm environment yaml files")
+def list_helm_envs():
+    env_dir = HELM_ENV_DIR
+    if not env_dir.exists() or not env_dir.is_dir():
+        return {"files": []}
+    files = [f.name for f in env_dir.iterdir() if f.is_file() and f.suffix == ".yaml"]
+    return {"files": sorted(files)}
+
 _MAX_BATCH_REPORT_DOWNLOAD = 100
 _UPLOAD_OWNER_STORE = REPO_ROOT / "webapp" / "data" / "upload_owners.json"
 
 
+def require_config_management(request: Request) -> dict:
+    return require_manage_configs(request)
+
+
 def require_project_management(request: Request) -> dict:
-    user = require_authenticated(request)
-    if not can_manage_project_files(user):
-        raise HTTPException(status_code=403, detail="Viewer 群組僅可使用報告與 Logs 功能")
-    return user
+    return require_manage_projects(request)
 
 
 def _list_projects() -> list[str]:
@@ -110,6 +77,19 @@ def _safe_project_file(project: str, filename: str) -> Path:
     project_dir = SCENARIO_DIR / project
     file_path = ensure_subpath(project_dir, project_dir / filename)
     return file_path
+
+
+def _safe_jmeter_env_file(env: str) -> Path:
+    env_name = (env or "").strip()
+    if not env_name:
+        raise HTTPException(400, "env is required")
+    return ensure_subpath(CONFIG_DIR, CONFIG_DIR / f"jmeter.{env_name}.env")
+
+
+def _path_modified_text(path: Path) -> str:
+    if not path.exists() or not path.is_file():
+        return ""
+    return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _file_md5(path: Path) -> str:
@@ -423,56 +403,109 @@ def db_restore_preview(
     }
 
 
-@router.get("/configs/helm", dependencies=[Depends(require_project_management)])
+@router.get("/configs/helm", dependencies=[Depends(require_config_management)])
 def get_helm_values(name: str):
     target = ensure_subpath(HELM_ENV_DIR, HELM_ENV_DIR / name)
-    return {"name": name, "content": read_text(target)}
+    return {
+        "name": name,
+        "content": read_text(target),
+        "modified_at": _path_modified_text(target),
+    }
 
 
-@router.post("/configs/helm", dependencies=[Depends(require_project_management)])
+@router.post("/configs/helm", dependencies=[Depends(require_config_management)])
 def save_helm_values(name: str = Form(...), content: str = Form(...)):
     target = ensure_subpath(HELM_ENV_DIR, HELM_ENV_DIR / name)
     write_text(target, content)
-    return {"ok": True}
+    return {
+        "ok": True,
+        "name": name,
+        "modified_at": _path_modified_text(target),
+    }
 
 
-@router.get("/configs/system-properties", dependencies=[Depends(require_project_management)])
-def get_system_properties(project: str):
-    target = _safe_project_file(project, "jmeter-system.properties")
-    return {"project": project, "content": read_text(target)}
+@router.get("/configs/jmeter-env", dependencies=[Depends(require_config_management)])
+def get_jmeter_env_config(env: str):
+    target = _safe_jmeter_env_file(env)
+    return {
+        "env": env,
+        "content": read_text(target),
+        "modified_at": _path_modified_text(target),
+    }
 
 
-@router.post("/configs/system-properties", dependencies=[Depends(require_project_management)])
-def save_system_properties(project: str = Form(...), content: str = Form(...)):
-    target = _safe_project_file(project, "jmeter-system.properties")
+@router.post("/configs/jmeter-env", dependencies=[Depends(require_config_management)])
+def save_jmeter_env_config(env: str = Form(...), content: str = Form(...)):
+    target = _safe_jmeter_env_file(env)
     write_text(target, content)
-    return {"ok": True}
+    return {
+        "ok": True,
+        "env": env,
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.get("/projects/env", dependencies=[Depends(require_project_management)])
 def get_project_env(project: str):
     target = _safe_project_file(project, ".env")
-    return {"project": project, "content": read_text(target)}
+    return {
+        "project": project,
+        "content": read_text(target),
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.post("/projects/env", dependencies=[Depends(require_project_management)])
 def save_project_env(project: str = Form(...), content: str = Form(...)):
     target = _safe_project_file(project, ".env")
     write_text(target, content)
-    return {"ok": True}
+    return {
+        "ok": True,
+        "project": project,
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.get("/projects/report-meta", dependencies=[Depends(require_project_management)])
 def get_project_report_meta(project: str):
     target = _safe_project_file(project, "report-meta.env")
-    return {"project": project, "content": read_text(target)}
+    return {
+        "project": project,
+        "content": read_text(target),
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.post("/projects/report-meta", dependencies=[Depends(require_project_management)])
 def save_project_report_meta(project: str = Form(...), content: str = Form(...)):
     target = _safe_project_file(project, "report-meta.env")
     write_text(target, content)
-    return {"ok": True}
+    return {
+        "ok": True,
+        "project": project,
+        "modified_at": _path_modified_text(target),
+    }
+
+
+@router.get("/projects/system-properties", dependencies=[Depends(require_project_management)])
+def get_project_system_properties(project: str):
+    target = _safe_project_file(project, "jmeter-system.properties")
+    return {
+        "project": project,
+        "content": read_text(target),
+        "modified_at": _path_modified_text(target),
+    }
+
+
+@router.post("/projects/system-properties", dependencies=[Depends(require_project_management)])
+def save_project_system_properties(project: str = Form(...), content: str = Form(...)):
+    target = _safe_project_file(project, "jmeter-system.properties")
+    write_text(target, content)
+    return {
+        "ok": True,
+        "project": project,
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.post("/projects/upload-jmx", dependencies=[Depends(require_project_management)])
@@ -500,7 +533,11 @@ async def upload_project_jmx(
     _set_owner_record(owner_store, "project_jmx", owner_key, str(user.get("username", "")))
     _write_upload_owner_store(owner_store)
 
-    return {"ok": True, "path": str(target.relative_to(REPO_ROOT))}
+    return {
+        "ok": True,
+        "path": str(target.relative_to(REPO_ROOT)),
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.get("/logs/start-test")

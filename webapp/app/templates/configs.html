@@ -2,39 +2,54 @@
 
 {% block content %}
 <div class="row g-4">
-  <div class="col-lg-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header">Helm values 編輯</div>
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header">環境選擇</div>
       <div class="card-body">
-        <form id="helm-read-form" class="row g-2 mb-3">
-          <div class="col-8">
-            <select id="helm-read-name" class="form-select" name="name" required>
-              {% for f in env_files %}
-              <option value="{{ f }}">{{ f }}</option>
+        <form id="config-load-form" class="row g-3 align-items-end">
+          <div class="col-lg-5">
+            <label class="form-label">環境</label>
+            <select id="config-env" class="form-select" required>
+              {% for env in helm_envs %}
+              <option value="{{ env }}">{{ env }}</option>
               {% endfor %}
             </select>
           </div>
-          <div class="col-4"><button type="submit" class="btn btn-outline-primary w-100">讀取</button></div>
+          <div class="col-lg-2">
+            <button id="config-load-btn" type="submit" class="btn btn-primary w-100">讀取</button>
+          </div>
+          <div class="col-lg-5">
+            <span id="config-current-env" class="badge text-bg-light">尚未鎖定環境</span>
+          </div>
         </form>
+      </div>
+    </div>
+  </div>
 
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Helm values 編輯</span>
+        <span class="badge text-bg-light" data-env-badge>未選擇環境</span>
+      </div>
+      <div class="card-body">
         <div class="yaml-preview-wrapper mb-3">
-          <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <span class="fw-semibold">YAML 預覽</span>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
               <span id="helm-preview-read-at" class="badge text-bg-secondary">尚未讀取</span>
-              <button id="copy-yaml-btn" type="button" class="btn btn-sm btn-outline-secondary">複製 YAML</button>
-              <button id="download-yaml-btn" type="button" class="btn btn-sm btn-outline-secondary">下載 YAML</button>
+              <button id="helm-copy-btn" type="button" class="btn btn-sm btn-outline-secondary config-bound" disabled>複製 YAML</button>
+              <button id="helm-download-btn" type="button" class="btn btn-sm btn-outline-secondary config-bound" disabled>下載 YAML</button>
               <span id="helm-preview-filename" class="badge text-bg-light">尚未讀取</span>
             </div>
           </div>
-          <pre id="helm-yaml-preview" class="yaml-preview"># 點擊「讀取」載入 Helm values</pre>
+          <pre id="helm-preview" class="yaml-preview"># 點擊上方「讀取」載入 Helm values</pre>
         </div>
 
         <form id="helm-save-form" method="post" action="/api/configs/helm">
-          <div class="mb-2"><input id="helm-save-name" class="form-control" name="name" placeholder="lab.yaml" required></div>
-          <div class="mb-2"><textarea id="helm-save-content" class="form-control font-monospace" name="content" rows="10" placeholder="貼上 values 內容"></textarea></div>
+          <div class="mb-2"><textarea id="helm-save-content" class="form-control font-monospace config-bound" name="content" rows="14" placeholder="貼上 values 內容" disabled></textarea></div>
           <div class="d-flex align-items-center gap-2">
-            <button id="helm-save-btn" class="btn btn-primary">儲存 values</button>
+            <button id="helm-save-btn" class="btn btn-primary config-bound" disabled>儲存 values</button>
             <span id="helm-save-state" class="badge text-bg-secondary">尚未載入</span>
           </div>
         </form>
@@ -42,46 +57,31 @@
     </div>
   </div>
 
-  <div class="col-lg-6">
+  <div class="col-12 col-xl-6">
     <div class="card shadow-sm h-100">
-      <div class="card-header">jmeter-system.properties 編輯</div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>jmeter config</span>
+        <span class="badge text-bg-light" data-env-badge>未選擇環境</span>
+      </div>
       <div class="card-body">
-        <form id="sys-read-form" class="row g-2 mb-3">
-          <div class="col-8">
-            <select id="sys-read-project" class="form-select" name="project" required>
-              {% for p in projects %}
-              <option value="{{ p }}">{{ p }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-4"><button type="submit" class="btn btn-outline-primary w-100">讀取</button></div>
-        </form>
-
         <div class="yaml-preview-wrapper mb-3">
-          <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <span class="fw-semibold">內容預覽</span>
-            <div class="d-flex align-items-center gap-2">
-              <span id="sys-preview-read-at" class="badge text-bg-secondary">尚未讀取</span>
-              <button id="sys-copy-btn" type="button" class="btn btn-sm btn-outline-secondary">複製</button>
-              <button id="sys-download-btn" type="button" class="btn btn-sm btn-outline-secondary">下載</button>
-              <span id="sys-preview-filename" class="badge text-bg-light">尚未讀取</span>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span id="jmeter-preview-read-at" class="badge text-bg-secondary">尚未讀取</span>
+              <button id="jmeter-copy-btn" type="button" class="btn btn-sm btn-outline-secondary config-bound" disabled>複製</button>
+              <button id="jmeter-download-btn" type="button" class="btn btn-sm btn-outline-secondary config-bound" disabled>下載</button>
+              <span id="jmeter-preview-filename" class="badge text-bg-light">尚未讀取</span>
             </div>
           </div>
-          <pre id="sys-preview" class="yaml-preview"># 點擊「讀取」載入 jmeter-system.properties</pre>
+          <pre id="jmeter-preview" class="yaml-preview"># 點擊上方「讀取」載入 jmeter config</pre>
         </div>
 
-        <form id="sys-save-form" method="post" action="/api/configs/system-properties">
-          <div class="mb-2">
-            <select id="sys-save-project" class="form-select" name="project" required>
-              {% for p in projects %}
-              <option value="{{ p }}">{{ p }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-2"><textarea id="sys-save-content" class="form-control font-monospace" name="content" rows="10" placeholder="貼上 properties 內容"></textarea></div>
+        <form id="jmeter-save-form" method="post" action="/api/configs/jmeter-env">
+          <div class="mb-2"><textarea id="jmeter-save-content" class="form-control font-monospace config-bound" name="content" rows="14" placeholder="貼上 jmeter config 內容" disabled></textarea></div>
           <div class="d-flex align-items-center gap-2">
-            <button id="sys-save-btn" class="btn btn-primary">儲存 properties</button>
-            <span id="sys-save-state" class="badge text-bg-secondary">尚未載入</span>
+            <button id="jmeter-save-btn" class="btn btn-primary config-bound" disabled>儲存 jmeter config</button>
+            <span id="jmeter-save-state" class="badge text-bg-secondary">尚未載入</span>
           </div>
         </form>
       </div>
@@ -91,176 +91,222 @@
 
 <script>
   (() => {
-    const readForm = document.getElementById("helm-read-form");
-    const readName = document.getElementById("helm-read-name");
-    const preview = document.getElementById("helm-yaml-preview");
-    const previewFilename = document.getElementById("helm-preview-filename");
-    const saveName = document.getElementById("helm-save-name");
-    const saveContent = document.getElementById("helm-save-content");
-    const saveForm = document.getElementById("helm-save-form");
-    const saveBtn = document.getElementById("helm-save-btn");
-    const saveState = document.getElementById("helm-save-state");
-    const copyYamlBtn = document.getElementById("copy-yaml-btn");
-    const downloadYamlBtn = document.getElementById("download-yaml-btn");
-    const previewReadAt = document.getElementById("helm-preview-read-at");
+    const nowTimeText = () => new Date().toLocaleString("zh-TW", { hour12: false });
+    const escapeHtml = (text) => text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
 
-    let currentYamlContent = "";
-    let baselineName = "";
-    let baselineContent = "";
+    const configLoadForm = document.getElementById("config-load-form");
+    const configEnv = document.getElementById("config-env");
+    const configLoadBtn = document.getElementById("config-load-btn");
+    const configCurrentEnv = document.getElementById("config-current-env");
+    const configBoundControls = Array.from(document.querySelectorAll(".config-bound"));
+    const envBadges = Array.from(document.querySelectorAll("[data-env-badge]"));
 
-    const yamlKeywords = [
-      "true",
-      "false",
-      "null",
-      "yes",
-      "no",
-      "on",
-      "off"
+    const state = {
+      currentEnv: "",
+    };
+
+    const editors = [
+      {
+        key: "helm",
+        filename: (env) => `${env}.yaml`,
+        readApi: (env) => `/api/configs/helm?name=${encodeURIComponent(`${env}.yaml`)}`,
+        saveApi: "/api/configs/helm",
+        saveBody: (env, content) => new URLSearchParams({ name: `${env}.yaml`, content }),
+        preview: document.getElementById("helm-preview"),
+        previewFilename: document.getElementById("helm-preview-filename"),
+        previewReadAt: document.getElementById("helm-preview-read-at"),
+        saveForm: document.getElementById("helm-save-form"),
+        saveContent: document.getElementById("helm-save-content"),
+        saveBtn: document.getElementById("helm-save-btn"),
+        saveState: document.getElementById("helm-save-state"),
+        copyBtn: document.getElementById("helm-copy-btn"),
+        downloadBtn: document.getElementById("helm-download-btn"),
+        currentContent: "",
+        baselineContent: "",
+      },
+      {
+        key: "jmeter",
+        filename: (env) => `jmeter.${env}.env`,
+        readApi: (env) => `/api/configs/jmeter-env?env=${encodeURIComponent(env)}`,
+        saveApi: "/api/configs/jmeter-env",
+        saveBody: (env, content) => new URLSearchParams({ env, content }),
+        preview: document.getElementById("jmeter-preview"),
+        previewFilename: document.getElementById("jmeter-preview-filename"),
+        previewReadAt: document.getElementById("jmeter-preview-read-at"),
+        saveForm: document.getElementById("jmeter-save-form"),
+        saveContent: document.getElementById("jmeter-save-content"),
+        saveBtn: document.getElementById("jmeter-save-btn"),
+        saveState: document.getElementById("jmeter-save-state"),
+        copyBtn: document.getElementById("jmeter-copy-btn"),
+        downloadBtn: document.getElementById("jmeter-download-btn"),
+        currentContent: "",
+        baselineContent: "",
+      }
     ];
 
-    function escapeHtml(text) {
-      return text
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
+    function setConfigBoundEnabled(enabled) {
+      configBoundControls.forEach((element) => {
+        element.disabled = !enabled;
+      });
     }
 
-    function setupPlainEditor(opts) {
-      const readForm = document.getElementById(opts.readFormId);
-      const readField = document.getElementById(opts.readFieldId);
-      const preview = document.getElementById(opts.previewId);
-      const previewFilename = document.getElementById(opts.previewFilenameId);
-      const previewReadAt = document.getElementById(opts.previewReadAtId);
-      const saveForm = document.getElementById(opts.saveFormId);
-      const saveField = document.getElementById(opts.saveFieldId);
-      const saveContent = document.getElementById(opts.saveContentId);
-      const saveBtn = document.getElementById(opts.saveBtnId);
-      const saveState = document.getElementById(opts.saveStateId);
-      const copyBtn = document.getElementById(opts.copyBtnId);
-      const downloadBtn = document.getElementById(opts.downloadBtnId);
-
-      let currentContent = "";
-      let baselineField = "";
-      let baselineContent = "";
-
-      const setState = (className, text) => {
-        if (!saveState) return;
-        saveState.className = `badge ${className}`;
-        saveState.textContent = text;
-      };
-
-      const setReadAt = (className, text) => {
-        if (!previewReadAt) return;
-        previewReadAt.className = `badge ${className}`;
-        previewReadAt.textContent = text;
-      };
-
-      const setBaseline = (field, content) => {
-        baselineField = field;
-        baselineContent = content;
-      };
-
-      const refreshDirtyState = () => {
-        if (!baselineField && !baselineContent && !saveField.value && !saveContent.value) {
-          setState("text-bg-secondary", "尚未載入");
-          return;
-        }
-        const dirty = (saveField.value || "") !== baselineField || (saveContent.value || "") !== baselineContent;
-        setState(dirty ? "text-bg-warning" : "text-bg-success", dirty ? "尚未儲存變更" : "已同步");
-      };
-
-      readForm?.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const value = readField.value;
-        preview.textContent = "讀取中...";
-        previewFilename.textContent = opts.filenameByValue(value);
-        setReadAt("text-bg-warning", "讀取中");
-
-        try {
-          const response = await fetch(`${opts.readApi}?${opts.readQueryKey}=${encodeURIComponent(value)}`);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const data = await response.json();
-          const fieldVal = data[opts.readResponseField] || value;
-          const content = data.content ?? "";
-          currentContent = content;
-
-          preview.innerHTML = escapeHtml(content || "");
-          saveField.value = fieldVal;
-          saveContent.value = content;
-          setBaseline(fieldVal, content);
-          refreshDirtyState();
-          setReadAt("text-bg-success", `已更新 ${nowTimeText()}`);
-        } catch (error) {
-          preview.textContent = `讀取失敗：${error.message}`;
-          setReadAt("text-bg-danger", `失敗 ${nowTimeText()}`);
-        }
+    function setCurrentEnv(env) {
+      const text = env || "未選擇環境";
+      envBadges.forEach((badge) => {
+        badge.textContent = text;
       });
+      configCurrentEnv.textContent = env ? `已鎖定：${env}` : "尚未鎖定環境";
+    }
 
-      saveField?.addEventListener("input", refreshDirtyState);
-      saveContent?.addEventListener("input", refreshDirtyState);
+    function setEditorReadState(editor, className, text) {
+      editor.previewReadAt.className = `badge ${className}`;
+      editor.previewReadAt.textContent = text;
+    }
 
-      saveForm?.addEventListener("submit", async (event) => {
+    function setEditorSaveState(editor, className, text) {
+      editor.saveState.className = `badge ${className}`;
+      editor.saveState.textContent = text;
+    }
+
+    function refreshDirty(editor) {
+      if (!state.currentEnv) {
+        setEditorSaveState(editor, "text-bg-secondary", "尚未載入");
+        return;
+      }
+      const dirty = (editor.saveContent.value || "") !== editor.baselineContent;
+      setEditorSaveState(editor, dirty ? "text-bg-warning" : "text-bg-success", dirty ? "尚未儲存變更" : "已同步");
+    }
+
+    async function loadEditor(editor, env) {
+      editor.preview.textContent = "讀取中...";
+      editor.previewFilename.textContent = editor.filename(env);
+      setEditorReadState(editor, "text-bg-warning", "讀取中");
+
+      const response = await fetch(editor.readApi(env));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.content ?? "";
+      editor.currentContent = content;
+      editor.baselineContent = content;
+      editor.preview.innerHTML = escapeHtml(content || "");
+      editor.saveContent.value = content;
+      editor.previewFilename.textContent = editor.filename(env);
+
+      const modifiedAt = data.modified_at || nowTimeText();
+      setEditorReadState(editor, "text-bg-success", `已更新 ${modifiedAt}`);
+      refreshDirty(editor);
+      return modifiedAt;
+    }
+
+    async function loadAll(env) {
+      state.currentEnv = env;
+      setCurrentEnv(env);
+      setConfigBoundEnabled(true);
+      configLoadBtn.disabled = true;
+
+      const results = await Promise.allSettled(editors.map((editor) => loadEditor(editor, env)));
+      const hasError = results.some((result) => result.status === "rejected");
+
+      if (hasError) {
+        results.forEach((result, index) => {
+          if (result.status !== "rejected") {
+            return;
+          }
+          const editor = editors[index];
+          editor.preview.textContent = `讀取失敗：${result.reason?.message || "未知錯誤"}`;
+          setEditorReadState(editor, "text-bg-danger", `失敗 ${nowTimeText()}`);
+          setEditorSaveState(editor, "text-bg-danger", "讀取失敗");
+        });
+      }
+
+      configLoadBtn.disabled = false;
+    }
+
+    editors.forEach((editor) => {
+      editor.saveContent.addEventListener("input", () => refreshDirty(editor));
+
+      editor.saveForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const fieldVal = (saveField.value || "").trim();
-        const content = saveContent.value || "";
-        if (!fieldVal) {
-          setState("text-bg-danger", "欄位不可為空");
+        if (!state.currentEnv) {
+          setEditorSaveState(editor, "text-bg-danger", "請先讀取環境");
           return;
         }
 
-        saveBtn.disabled = true;
-        setState("text-bg-info", "儲存中...");
+        const content = editor.saveContent.value || "";
+        editor.saveBtn.disabled = true;
+        setEditorSaveState(editor, "text-bg-info", "儲存中...");
+
         try {
-          const body = new URLSearchParams({ [opts.saveBodyField]: fieldVal, content });
-          const response = await fetch(opts.saveApi, {
+          const body = editor.saveBody(state.currentEnv, content);
+          const response = await fetch(editor.saveApi, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
             body: body.toString()
           });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
 
-          setBaseline(fieldVal, content);
-          refreshDirtyState();
-          setState("text-bg-success", `已儲存 ${nowTimeText()}`);
+          const data = await response.json();
+          const modifiedAt = data.modified_at || nowTimeText();
+          editor.currentContent = content;
+          editor.baselineContent = content;
+          editor.preview.innerHTML = escapeHtml(content || "");
+          setEditorReadState(editor, "text-bg-success", `已更新 ${modifiedAt}`);
+          refreshDirty(editor);
+          setEditorSaveState(editor, "text-bg-success", `已儲存 ${modifiedAt}`);
         } catch (error) {
-          setState("text-bg-danger", `儲存失敗：${error.message}`);
+          setEditorSaveState(editor, "text-bg-danger", `儲存失敗：${error.message}`);
         } finally {
-          saveBtn.disabled = false;
+          editor.saveBtn.disabled = false;
         }
       });
 
-      copyBtn?.addEventListener("click", async () => {
-        const content = currentContent || saveContent.value || "";
+      editor.copyBtn?.addEventListener("click", async () => {
+        const content = editor.currentContent || editor.saveContent.value || "";
         if (!content) {
-          copyBtn.textContent = "無內容";
-          setTimeout(() => { copyBtn.textContent = "複製"; }, 1200);
+          editor.copyBtn.textContent = "無內容";
+          setTimeout(() => {
+            editor.copyBtn.textContent = editor.key === "helm" ? "複製 YAML" : "複製";
+          }, 1200);
           return;
         }
+
         try {
           if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(content);
           } else {
-            saveContent.focus();
-            saveContent.select();
+            editor.saveContent.focus();
+            editor.saveContent.select();
             document.execCommand("copy");
           }
-          copyBtn.textContent = "已複製";
+          editor.copyBtn.textContent = "已複製";
         } catch (_error) {
-          copyBtn.textContent = "失敗";
+          editor.copyBtn.textContent = "失敗";
         } finally {
-          setTimeout(() => { copyBtn.textContent = "複製"; }, 1200);
+          setTimeout(() => {
+            editor.copyBtn.textContent = editor.key === "helm" ? "複製 YAML" : "複製";
+          }, 1200);
         }
       });
 
-      downloadBtn?.addEventListener("click", () => {
-        const content = currentContent || saveContent.value || "";
+      editor.downloadBtn?.addEventListener("click", () => {
+        const content = editor.currentContent || editor.saveContent.value || "";
         if (!content) {
-          downloadBtn.textContent = "無內容";
-          setTimeout(() => { downloadBtn.textContent = "下載"; }, 1200);
+          editor.downloadBtn.textContent = "無內容";
+          setTimeout(() => {
+            editor.downloadBtn.textContent = editor.key === "helm" ? "下載 YAML" : "下載";
+          }, 1200);
           return;
         }
 
-        const filename = opts.downloadFilename(saveField.value || readField.value || "");
+        const filename = editor.filename(state.currentEnv || "config");
         const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -271,229 +317,23 @@
         link.remove();
         URL.revokeObjectURL(url);
 
-        downloadBtn.textContent = "已下載";
-        setTimeout(() => { downloadBtn.textContent = "下載"; }, 1200);
+        editor.downloadBtn.textContent = "已下載";
+        setTimeout(() => {
+          editor.downloadBtn.textContent = editor.key === "helm" ? "下載 YAML" : "下載";
+        }, 1200);
       });
-    }
+    });
 
-    function highlightYaml(rawText) {
-      const lines = rawText.split("\n");
-      const highlighted = lines.map((line) => {
-        const escapedLine = escapeHtml(line);
-
-        if (/^\s*#/.test(line)) {
-          return `<span class="yaml-comment">${escapedLine}</span>`;
-        }
-
-        const keyMatch = escapedLine.match(/^(\s*-?\s*)([A-Za-z0-9_.\-"']+)(\s*:\s*)(.*)$/);
-        if (!keyMatch) {
-          return escapedLine;
-        }
-
-        const indent = keyMatch[1];
-        const key = keyMatch[2];
-        const colon = keyMatch[3];
-        let value = keyMatch[4];
-
-        if (value.length > 0) {
-          value = value
-            .replace(/\b(-?\d+(\.\d+)?)\b/g, '<span class="yaml-number">$1</span>')
-            .replace(/("[^"]*"|'[^']*')/g, '<span class="yaml-string">$1</span>');
-
-          yamlKeywords.forEach((kw) => {
-            const reg = new RegExp(`\\b${kw}\\b`, "g");
-            value = value.replace(reg, `<span class="yaml-bool">${kw}</span>`);
-          });
-        }
-
-        return `${indent}<span class="yaml-key">${key}</span>${colon}${value}`;
-      });
-
-      return highlighted.join("\n");
-    }
-
-    function nowTimeText() {
-      const now = new Date();
-      return now.toLocaleString("zh-TW", { hour12: false });
-    }
-
-    function markSaveState(className, text) {
-      if (!saveState) return;
-      saveState.className = `badge ${className}`;
-      saveState.textContent = text;
-    }
-
-    function setBaseline(name, content) {
-      baselineName = name;
-      baselineContent = content;
-    }
-
-    function isDirty() {
-      return (saveName.value || "") !== baselineName || (saveContent.value || "") !== baselineContent;
-    }
-
-    function refreshDirtyState() {
-      if (!baselineName && !baselineContent && !saveName.value && !saveContent.value) {
-        markSaveState("text-bg-secondary", "尚未載入");
-        return;
-      }
-      markSaveState(isDirty() ? "text-bg-warning" : "text-bg-success", isDirty() ? "尚未儲存變更" : "已同步");
-    }
-
-    readForm?.addEventListener("submit", async (event) => {
+    configLoadForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
-
-      const name = readName.value;
-      preview.textContent = "讀取中...";
-      previewFilename.textContent = name;
-      if (previewReadAt) {
-        previewReadAt.className = "badge text-bg-warning";
-        previewReadAt.textContent = "讀取中";
-      }
-
-      try {
-        const response = await fetch(`/api/configs/helm?name=${encodeURIComponent(name)}`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        const content = data.content ?? "";
-        currentYamlContent = content;
-
-        preview.innerHTML = highlightYaml(content);
-        saveName.value = data.name || name;
-        saveContent.value = content;
-        setBaseline(saveName.value || "", content);
-        refreshDirtyState();
-        if (previewReadAt) {
-          previewReadAt.className = "badge text-bg-success";
-          previewReadAt.textContent = `已更新 ${nowTimeText()}`;
-        }
-      } catch (error) {
-        preview.textContent = `讀取失敗：${error.message}`;
-        if (previewReadAt) {
-          previewReadAt.className = "badge text-bg-danger";
-          previewReadAt.textContent = `失敗 ${nowTimeText()}`;
-        }
-      }
-    });
-
-    saveName?.addEventListener("input", refreshDirtyState);
-    saveContent?.addEventListener("input", refreshDirtyState);
-
-    saveForm?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const name = (saveName.value || "").trim();
-      const content = saveContent.value || "";
-
-      if (!name) {
-        markSaveState("text-bg-danger", "檔名不可為空");
+      const env = (configEnv.value || "").trim();
+      if (!env) {
         return;
       }
-
-      saveBtn.disabled = true;
-      markSaveState("text-bg-info", "儲存中...");
-
-      try {
-        const body = new URLSearchParams({ name, content });
-        const response = await fetch("/api/configs/helm", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-          body: body.toString()
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        setBaseline(name, content);
-        refreshDirtyState();
-        markSaveState("text-bg-success", `已儲存 ${nowTimeText()}`);
-      } catch (error) {
-        markSaveState("text-bg-danger", `儲存失敗：${error.message}`);
-      } finally {
-        saveBtn.disabled = false;
-      }
+      await loadAll(env);
     });
 
-    copyYamlBtn?.addEventListener("click", async () => {
-      const content = currentYamlContent || saveContent.value || "";
-      if (!content) {
-        copyYamlBtn.textContent = "無內容可複製";
-        setTimeout(() => {
-          copyYamlBtn.textContent = "複製 YAML";
-        }, 1200);
-        return;
-      }
-
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(content);
-        } else {
-          saveContent.focus();
-          saveContent.select();
-          document.execCommand("copy");
-        }
-
-        copyYamlBtn.textContent = "已複製";
-      } catch (error) {
-        copyYamlBtn.textContent = "複製失敗";
-      } finally {
-        setTimeout(() => {
-          copyYamlBtn.textContent = "複製 YAML";
-        }, 1200);
-      }
-    });
-
-    downloadYamlBtn?.addEventListener("click", () => {
-      const content = currentYamlContent || saveContent.value || "";
-      if (!content) {
-        downloadYamlBtn.textContent = "無內容可下載";
-        setTimeout(() => {
-          downloadYamlBtn.textContent = "下載 YAML";
-        }, 1200);
-        return;
-      }
-
-      const rawName = (saveName.value || readName.value || "values.yaml").trim();
-      const filename = rawName.endsWith(".yaml") || rawName.endsWith(".yml") ? rawName : `${rawName}.yaml`;
-      const blob = new Blob([content], { type: "application/x-yaml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-
-      downloadYamlBtn.textContent = "已下載";
-      setTimeout(() => {
-        downloadYamlBtn.textContent = "下載 YAML";
-      }, 1200);
-    });
-
-    setupPlainEditor({
-      readFormId: "sys-read-form",
-      readFieldId: "sys-read-project",
-      previewId: "sys-preview",
-      previewFilenameId: "sys-preview-filename",
-      previewReadAtId: "sys-preview-read-at",
-      saveFormId: "sys-save-form",
-      saveFieldId: "sys-save-project",
-      saveContentId: "sys-save-content",
-      saveBtnId: "sys-save-btn",
-      saveStateId: "sys-save-state",
-      copyBtnId: "sys-copy-btn",
-      downloadBtnId: "sys-download-btn",
-      readApi: "/api/configs/system-properties",
-      readQueryKey: "project",
-      readResponseField: "project",
-      saveApi: "/api/configs/system-properties",
-      saveBodyField: "project",
-      filenameByValue: (project) => `${project}/jmeter-system.properties`,
-      downloadFilename: (project) => `${project || "jmeter"}-jmeter-system.properties`
-    });
+    setCurrentEnv("");
   })();
 </script>
 {% endblock %}

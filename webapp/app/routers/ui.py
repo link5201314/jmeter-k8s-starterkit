@@ -10,7 +10,8 @@ from webapp.app.core.config import CONFIG_DIR, HELM_ENV_DIR, REPORT_DIR, SCENARI
 from webapp.app.services.auth_service import (
     GROUPS,
     can_drive_tests,
-    can_manage_project_files,
+    can_manage_configs,
+    can_manage_projects,
     can_manage_users,
     change_password,
     create_user,
@@ -50,6 +51,8 @@ def _template_context(request: Request, extra: Optional[dict] = None) -> dict:
     permissions = group_permissions(str(user.get("group", ""))) if user else {
         "manage_users": False,
         "drive_tests": False,
+        "manage_configs": False,
+        "manage_projects": False,
         "manage_project_files": False,
         "view_reports_logs": False,
     }
@@ -58,6 +61,8 @@ def _template_context(request: Request, extra: Optional[dict] = None) -> dict:
         "current_user": user,
         "can_manage_users": permissions.get("manage_users", False),
         "can_drive_tests": permissions.get("drive_tests", False),
+        "can_manage_configs": permissions.get("manage_configs", False),
+        "can_manage_projects": permissions.get("manage_projects", False),
         "can_manage_project_files": permissions.get("manage_project_files", False),
         "can_view_reports_logs": permissions.get("view_reports_logs", False),
     }
@@ -109,11 +114,29 @@ def _admin_required(request: Request) -> dict | Response:
     return user
 
 
+def _config_manage_required(request: Request) -> dict | Response:
+    user = _login_required(request)
+    if isinstance(user, RedirectResponse):
+        return user
+    if not can_manage_configs(user):
+        return templates.TemplateResponse(
+            "forbidden.html",
+            _template_context(
+                request,
+                {
+                    "message": "你沒有設定管理權限。",
+                },
+            ),
+            status_code=403,
+        )
+    return user
+
+
 def _project_manage_required(request: Request) -> dict | Response:
     user = _login_required(request)
     if isinstance(user, RedirectResponse):
         return user
-    if not can_manage_project_files(user):
+    if not can_manage_projects(user):
         return templates.TemplateResponse(
             "forbidden.html",
             _template_context(
@@ -190,14 +213,13 @@ def db_restore_page(request: Request):
 
 @router.get("/configs")
 def configs_page(request: Request):
-    user = _project_manage_required(request)
+    user = _config_manage_required(request)
     if isinstance(user, Response):
         return user
-    env_files = sorted([p.name for p in HELM_ENV_DIR.glob("*.yaml")]) if HELM_ENV_DIR.exists() else []
-    projects = _list_projects()
+    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml")]) if HELM_ENV_DIR.exists() else []
     return templates.TemplateResponse(
         "configs.html",
-        _template_context(request, {"env_files": env_files, "projects": projects}),
+        _template_context(request, {"helm_envs": helm_envs}),
     )
 
 

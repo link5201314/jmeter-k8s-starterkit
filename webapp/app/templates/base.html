@@ -19,8 +19,10 @@
           <a class="nav-link" href="/db-restore">資料庫還原</a>
           {% endif %}
 
-          {% if can_manage_project_files %}
+          {% if can_manage_configs %}
           <a class="nav-link" href="/configs">設定管理</a>
+          {% endif %}
+          {% if can_manage_projects %}
           <a class="nav-link" href="/projects">專案管理</a>
           <a class="nav-link" href="/datasets">Dataset</a>
           {% endif %}
