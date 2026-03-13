@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import re
 import subprocess
 import zipfile
 from datetime import datetime
@@ -13,9 +14,11 @@ from webapp.app.core.config import (
     CONFIG_DIR,
     DATASET_DIR,
     HELM_ENV_DIR,
+    PROJECT_TEMPLATE_FALLBACK_DIR,
     REPO_ROOT,
     REPORT_DIR,
     SCENARIO_DIR,
+    SCENARIO_TEMPLATE_DIR,
     START_SCRIPT,
     STOP_SCRIPT,
 )
@@ -43,11 +46,13 @@ def list_helm_envs():
     env_dir = HELM_ENV_DIR
     if not env_dir.exists() or not env_dir.is_dir():
         return {"files": []}
-    files = [f.name for f in env_dir.iterdir() if f.is_file() and f.suffix == ".yaml"]
+    files = [f.name for f in env_dir.iterdir() if f.is_file() and f.suffix == ".yaml" and "webapp-bootstrap-admin-secret" not in f.stem]
     return {"files": sorted(files)}
 
 _MAX_BATCH_REPORT_DOWNLOAD = 100
 _UPLOAD_OWNER_STORE = REPO_ROOT / "webapp" / "data" / "upload_owners.json"
+_PROJECT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_PROJECT_TEMPLATE_FILES = (".env", "jmeter-system.properties", "report-meta.env")
 
 
 def require_config_management(request: Request) -> dict:
@@ -77,6 +82,31 @@ def _safe_project_file(project: str, filename: str) -> Path:
     project_dir = SCENARIO_DIR / project
     file_path = ensure_subpath(project_dir, project_dir / filename)
     return file_path
+
+
+def _validate_project_name(name: str) -> str:
+    project_name = (name or "").strip()
+    if not project_name:
+        raise HTTPException(400, "project name is required")
+    if not _PROJECT_NAME_PATTERN.fullmatch(project_name):
+        raise HTTPException(400, "project name format invalid: only letters/numbers/._- and max length 64")
+    if project_name.startswith("_"):
+        raise HTTPException(400, "project name cannot start with '_' ")
+    if project_name in {"dataset", "module", "_template"}:
+        raise HTTPException(400, f"project name '{project_name}' is reserved")
+    return project_name
+
+
+def _resolve_template_file(filename: str) -> tuple[Path | None, str]:
+    primary = SCENARIO_TEMPLATE_DIR / filename
+    if primary.exists() and primary.is_file():
+        return primary, "scenario/_template"
+
+    fallback = PROJECT_TEMPLATE_FALLBACK_DIR / filename
+    if fallback.exists() and fallback.is_file():
+        return fallback, "webapp built-in defaults"
+
+    return None, ""
 
 
 def _safe_jmeter_env_file(env: str) -> Path:
@@ -537,6 +567,48 @@ async def upload_project_jmx(
         "ok": True,
         "path": str(target.relative_to(REPO_ROOT)),
         "modified_at": _path_modified_text(target),
+    }
+
+
+@router.post("/projects/create", dependencies=[Depends(require_project_management)])
+def create_project(project: str = Form(...)):
+    project_name = _validate_project_name(project)
+    project_dir = ensure_subpath(SCENARIO_DIR, SCENARIO_DIR / project_name)
+    if project_dir.exists():
+        raise HTTPException(409, f"project already exists: {project_name}")
+
+    project_dir.mkdir(parents=True, exist_ok=False)
+
+    copied_files: list[str] = []
+    sources: dict[str, str] = {}
+
+    try:
+        for filename in _PROJECT_TEMPLATE_FILES:
+            source, source_name = _resolve_template_file(filename)
+            if source is None:
+                raise HTTPException(
+                    500,
+                    f"template file not found: {filename} (checked scenario/_template and webapp defaults)",
+                )
+            target = ensure_subpath(project_dir, project_dir / filename)
+            content = source.read_text(encoding="utf-8")
+            write_text(target, content)
+            copied_files.append(filename)
+            sources[filename] = source_name
+    except Exception:
+        if project_dir.exists() and project_dir.is_dir():
+            for path in project_dir.iterdir():
+                if path.is_file():
+                    path.unlink(missing_ok=True)
+            project_dir.rmdir()
+        raise
+
+    return {
+        "ok": True,
+        "project": project_name,
+        "copied_files": copied_files,
+        "template_sources": sources,
+        "modified_at": _path_modified_text(project_dir / ".env"),
     }
 
 

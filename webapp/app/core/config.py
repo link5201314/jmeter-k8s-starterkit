@@ -20,6 +20,8 @@ START_SCRIPT = REPO_ROOT / "start_test.sh"
 STOP_SCRIPT = REPO_ROOT / "stop_test.sh"
 
 SCENARIO_DIR = REPO_ROOT / "scenario"
+SCENARIO_TEMPLATE_DIR = SCENARIO_DIR / "_template"
+PROJECT_TEMPLATE_FALLBACK_DIR = REPO_ROOT / "webapp" / "app" / "project_template_defaults"
 DATASET_DIR = SCENARIO_DIR / "dataset"
 REPORT_DIR = REPO_ROOT / "report"
 CONFIG_DIR = REPO_ROOT / "config"

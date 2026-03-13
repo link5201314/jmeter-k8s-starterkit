@@ -72,7 +72,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.03.11-offline5"
+    tag: "2026.03.13-filter-bootstrap-secret"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:

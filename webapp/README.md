@@ -272,6 +272,23 @@ WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpat
 kubectl -n performance-test cp scenario/. "$WEBAPP_POD":/workspace/scenario/
 ```
 
+### 專案管理頁：建立新專案（含模板自動帶入）
+
+在「專案管理」頁可直接輸入新專案名稱並建立。
+
+建立成功時會自動建立 `scenario/<project>/`，並複製：
+
+- `.env`
+- `jmeter-system.properties`
+- `report-meta.env`
+
+模板來源優先序：
+
+1. `/workspace/scenario/_template`（PVC 內模板）
+2. `webapp/app/project_template_defaults`（webapp 內建 fallback）
+
+建立完成後，前端會立即切換到新專案，並自動讀取三個檔案到編輯器。
+
 若你有在環境內新增帳號（例如 `test1`），建議在升版前先備份 `users.json`：
 
 ```bash

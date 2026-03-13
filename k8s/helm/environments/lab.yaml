@@ -36,7 +36,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.03.13-csv-preview-fix"
+    tag: "2026.03.13-filter-bootstrap-secret"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:

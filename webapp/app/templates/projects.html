@@ -7,7 +7,7 @@
       <div class="card-header">專案選擇</div>
       <div class="card-body">
         <form id="project-load-form" class="row g-3 align-items-end">
-          <div class="col-lg-5">
+          <div class="col-lg-4">
             <label class="form-label">專案</label>
             <select id="project-select" class="form-select" required>
               {% for p in projects %}
@@ -18,8 +18,16 @@
           <div class="col-lg-2">
             <button id="project-load-btn" type="submit" class="btn btn-primary w-100">讀取</button>
           </div>
-          <div class="col-lg-5">
+          <div class="col-lg-3">
+            <label class="form-label">新專案名稱</label>
+            <input id="project-create-input" class="form-control" type="text" placeholder="例如：my-scenario" maxlength="64">
+          </div>
+          <div class="col-lg-1">
+            <button id="project-create-btn" type="button" class="btn btn-success w-100">建立</button>
+          </div>
+          <div class="col-lg-2">
             <span id="project-current" class="badge text-bg-light">尚未鎖定專案</span>
+            <div><span id="project-create-state" class="badge text-bg-secondary mt-1">尚未建立</span></div>
           </div>
         </form>
       </div>
@@ -174,6 +182,9 @@
     const projectLoadForm = document.getElementById("project-load-form");
     const projectSelect = document.getElementById("project-select");
     const projectLoadBtn = document.getElementById("project-load-btn");
+    const projectCreateInput = document.getElementById("project-create-input");
+    const projectCreateBtn = document.getElementById("project-create-btn");
+    const projectCreateState = document.getElementById("project-create-state");
     const projectCurrent = document.getElementById("project-current");
     const projectBoundControls = Array.from(document.querySelectorAll(".project-bound"));
     const projectBadges = Array.from(document.querySelectorAll("[data-project-badge]"));
@@ -255,6 +266,32 @@
         badge.textContent = text;
       });
       projectCurrent.textContent = project ? `已鎖定：${project}` : "尚未鎖定專案";
+    }
+
+    function setProjectCreateState(className, text) {
+      projectCreateState.className = `badge ${className} mt-1`;
+      projectCreateState.textContent = text;
+    }
+
+    function ensureProjectOption(project) {
+      const existing = Array.from(projectSelect.options).find((option) => option.value === project);
+      if (!existing) {
+        const option = document.createElement("option");
+        option.value = project;
+        option.textContent = project;
+        projectSelect.appendChild(option);
+      }
+      const sorted = Array.from(projectSelect.options)
+        .map((option) => ({ value: option.value, text: option.textContent }))
+        .sort((a, b) => a.value.localeCompare(b.value));
+      projectSelect.innerHTML = "";
+      sorted.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.value;
+        option.textContent = item.text;
+        projectSelect.appendChild(option);
+      });
+      projectSelect.value = project;
     }
 
     function formatSize(bytes) {
@@ -529,6 +566,50 @@
         jmxUploadState.textContent = `上傳失敗：${error.message}`;
       } finally {
         jmxUploadBtn.disabled = false;
+      }
+    });
+
+    projectCreateBtn?.addEventListener("click", async () => {
+      const project = (projectCreateInput?.value || "").trim();
+      if (!project) {
+        setProjectCreateState("text-bg-danger", "請輸入專案名稱");
+        return;
+      }
+
+      projectCreateBtn.disabled = true;
+      setProjectCreateState("text-bg-info", "建立中...");
+
+      try {
+        const body = new URLSearchParams({ project });
+        const response = await fetch("/api/projects/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          body: body.toString()
+        });
+
+        if (!response.ok) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const errData = await response.json();
+            detail = errData.detail || detail;
+          } catch (_error) {
+            detail = `HTTP ${response.status}`;
+          }
+          throw new Error(detail);
+        }
+
+        const data = await response.json();
+        const createdProject = String(data.project || project).trim();
+        ensureProjectOption(createdProject);
+        if (projectCreateInput) {
+          projectCreateInput.value = "";
+        }
+        setProjectCreateState("text-bg-success", `已建立 ${createdProject}`);
+        await loadProject(createdProject);
+      } catch (error) {
+        setProjectCreateState("text-bg-danger", `建立失敗：${error.message}`);
+      } finally {
+        projectCreateBtn.disabled = false;
       }
     });
 

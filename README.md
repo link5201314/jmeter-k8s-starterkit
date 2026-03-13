@@ -135,6 +135,25 @@ kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
 
 `start_test.sh` 仍可維持現有 `scenario/...` 相對路徑，不需調整，只要掛載點保持 `/workspace/scenario`。
 
+### 專案管理頁：建立新專案（含模板自動帶入）
+
+在 webapp 的「專案管理」頁面可直接輸入新專案名稱並建立。
+
+建立成功時會自動建立 `scenario/<project>/`，並複製以下三個檔案：
+
+- `.env`
+- `jmeter-system.properties`
+- `report-meta.env`
+
+模板來源優先序：
+
+1. `/workspace/scenario/_template`（PVC 內模板）
+2. `webapp/app/project_template_defaults`（webapp 內建 fallback）
+
+建立完成後，頁面會立即切換到新專案並自動讀取上述檔案內容。
+
+> 若你在 PVC 內沒有 `_template`，功能仍可透過 webapp 內建 fallback 模板正常建立。
+
 請務必遵循此原則，才能避免 PVC 衝突與測試異常。
 
 ## Webapp 管理介面（FastAPI）

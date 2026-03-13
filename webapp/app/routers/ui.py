@@ -224,7 +224,7 @@ def tests_page(request: Request):
     if isinstance(user, Response):
         return user
     projects = _list_projects()
-    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml")]) if HELM_ENV_DIR.exists() else []
+    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if "webapp-bootstrap-admin-secret" not in p.stem]) if HELM_ENV_DIR.exists() else []
     return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects, "helm_envs": helm_envs}))
 
 
@@ -246,7 +246,7 @@ def configs_page(request: Request):
     user = _config_manage_required(request)
     if isinstance(user, Response):
         return user
-    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml")]) if HELM_ENV_DIR.exists() else []
+    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if "webapp-bootstrap-admin-secret" not in p.stem]) if HELM_ENV_DIR.exists() else []
     return templates.TemplateResponse(
         "configs.html",
         _template_context(request, {"helm_envs": helm_envs}),
