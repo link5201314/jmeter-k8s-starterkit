@@ -1,0 +1,15 @@
+.git
+.github
+report/
+webapp/data/*
+!webapp/data/.gitkeep
+!webapp/data/secrets/
+webapp/data/secrets/*
+!webapp/data/secrets/.gitkeep
+scenario/dataset/_split/
+scenario/**/jmeter_injector_start.sh
+scenario/**/load_test.sh
+webapp/logs/*
+!webapp/logs/.gitkeep
+webapp/tmp/*
+!webapp/tmp/.gitkeep

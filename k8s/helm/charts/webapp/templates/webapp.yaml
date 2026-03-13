@@ -34,15 +34,55 @@ spec:
           volumeMounts:
             - name: jmeter-data-dir
               mountPath: {{ .Values.reportPvc.mountPath }}
+{{- if .Values.scenarioPvc.enabled }}
+            - name: scenario-data-dir
+              mountPath: {{ .Values.scenarioPvc.mountPath }}
+{{- end }}
+{{- if .Values.dataPvc.enabled }}
+            - name: webapp-data-dir
+              mountPath: {{ .Values.dataPvc.mountPath }}
+{{- end }}
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
+{{- if .Values.bootstrapAdmin.existingSecret }}
+            - name: WEBAPP_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrapAdmin.existingSecret }}
+                  key: {{ .Values.bootstrapAdmin.usernameKey }}
+                  optional: true
+            - name: WEBAPP_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrapAdmin.existingSecret }}
+                  key: {{ .Values.bootstrapAdmin.passwordKey }}
+                  optional: true
+{{- if .Values.bootstrapAdmin.groupKey }}
+            - name: WEBAPP_BOOTSTRAP_ADMIN_GROUP
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrapAdmin.existingSecret }}
+                  key: {{ .Values.bootstrapAdmin.groupKey }}
+                  optional: true
+{{- end }}
+{{- end }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}
       volumes:
         - name: jmeter-data-dir
           persistentVolumeClaim:
             claimName: {{ .Values.reportPvc.claimName }}
+{{- if .Values.scenarioPvc.enabled }}
+        - name: scenario-data-dir
+          persistentVolumeClaim:
+            claimName: {{ default .Values.scenarioPvc.claimName .Values.scenarioPvc.existingClaim }}
+{{- end }}
+{{- if .Values.dataPvc.enabled }}
+        - name: webapp-data-dir
+          persistentVolumeClaim:
+            claimName: {{ default .Values.dataPvc.claimName .Values.dataPvc.existingClaim }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

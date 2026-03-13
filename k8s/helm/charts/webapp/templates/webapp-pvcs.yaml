@@ -1,0 +1,35 @@
+{{- if and .Values.scenarioPvc.enabled (not .Values.scenarioPvc.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.scenarioPvc.claimName }}
+  labels:
+    app: jmeter-webapp
+spec:
+  accessModes:
+{{ toYaml .Values.scenarioPvc.accessModes | indent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.scenarioPvc.size }}
+{{- if .Values.scenarioPvc.storageClassName }}
+  storageClassName: {{ .Values.scenarioPvc.storageClassName | quote }}
+{{- end }}
+---
+{{- end }}
+{{- if and .Values.dataPvc.enabled (not .Values.dataPvc.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.dataPvc.claimName }}
+  labels:
+    app: jmeter-webapp
+spec:
+  accessModes:
+{{ toYaml .Values.dataPvc.accessModes | indent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.dataPvc.size }}
+{{- if .Values.dataPvc.storageClassName }}
+  storageClassName: {{ .Values.dataPvc.storageClassName | quote }}
+{{- end }}
+{{- end }}

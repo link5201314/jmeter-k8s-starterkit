@@ -32,3 +32,29 @@ nodeSelector: {}
 reportPvc:
   claimName: jmeter-data-dir-pvc
   mountPath: /workspace/report
+
+scenarioPvc:
+  enabled: true
+  existingClaim: ""
+  claimName: jmeter-webapp-scenario-pvc
+  mountPath: /workspace/scenario
+  accessModes:
+    - ReadWriteMany
+  size: 10Gi
+  storageClassName: ""
+
+dataPvc:
+  enabled: true
+  existingClaim: ""
+  claimName: jmeter-webapp-data-pvc
+  mountPath: /workspace/webapp/data
+  accessModes:
+    - ReadWriteMany
+  size: 1Gi
+  storageClassName: ""
+
+bootstrapAdmin:
+  existingSecret: ""
+  usernameKey: username
+  passwordKey: password
+  groupKey: group

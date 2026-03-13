@@ -36,8 +36,31 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.03.13-config-sync"
+    tag: "2026.03.13-csv-preview-fix"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:
     host: jmeter-web.example.com
+  scenarioPvc:
+    enabled: true
+    existingClaim: ""
+    claimName: jmeter-webapp-scenario-pvc
+    mountPath: /workspace/scenario
+    accessModes:
+      - ReadWriteMany
+    size: 10Gi
+    storageClassName: nfs-csi
+  dataPvc:
+    enabled: true
+    existingClaim: ""
+    claimName: jmeter-webapp-data-pvc
+    mountPath: /workspace/webapp/data
+    accessModes:
+      - ReadWriteMany
+    size: 1Gi
+    storageClassName: nfs-csi
+  bootstrapAdmin:
+    existingSecret: jmeter-webapp-bootstrap-admin
+    usernameKey: username
+    passwordKey: password
+    groupKey: group

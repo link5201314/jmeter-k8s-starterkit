@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 from datetime import datetime
@@ -20,6 +21,9 @@ GROUPS = (GROUP_ADMIN, GROUP_EXECUTOR, GROUP_TESTER, GROUP_VIEWER)
 
 _USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
 _USER_STORE_PATH = REPO_ROOT / "webapp" / "data" / "users.json"
+_BOOTSTRAP_ADMIN_USERNAME_ENV = "WEBAPP_BOOTSTRAP_ADMIN_USERNAME"
+_BOOTSTRAP_ADMIN_PASSWORD_ENV = "WEBAPP_BOOTSTRAP_ADMIN_PASSWORD"
+_BOOTSTRAP_ADMIN_GROUP_ENV = "WEBAPP_BOOTSTRAP_ADMIN_GROUP"
 
 
 def _now_text() -> str:
@@ -80,40 +84,53 @@ def _find_user(users: list[dict], username: str) -> tuple[int, dict] | tuple[Non
     return None, None
 
 
+def _get_bootstrap_admin() -> dict[str, str] | None:
+    username = os.getenv(_BOOTSTRAP_ADMIN_USERNAME_ENV, "").strip()
+    password = os.getenv(_BOOTSTRAP_ADMIN_PASSWORD_ENV, "")
+    group = os.getenv(_BOOTSTRAP_ADMIN_GROUP_ENV, GROUP_ADMIN).strip() or GROUP_ADMIN
+
+    if not username and not password:
+        return None
+    if not username or not password:
+        raise RuntimeError(
+            "Bootstrap admin 設定不完整，需同時提供 WEBAPP_BOOTSTRAP_ADMIN_USERNAME 與 WEBAPP_BOOTSTRAP_ADMIN_PASSWORD"
+        )
+    if not _USERNAME_PATTERN.fullmatch(username):
+        raise RuntimeError("Bootstrap admin 使用者名稱格式不正確")
+    if len(password) < 8:
+        raise RuntimeError("Bootstrap admin 密碼長度至少 8 碼")
+    if group != GROUP_ADMIN:
+        raise RuntimeError("Bootstrap admin 群組必須為 Admin")
+    return {"username": username, "password": password, "group": group}
+
+
+def _build_bootstrap_user(bootstrap_admin: dict[str, str]) -> dict[str, str]:
+    now = _now_text()
+    return {
+        "username": bootstrap_admin["username"],
+        "group": bootstrap_admin["group"],
+        "password": _hash_password(bootstrap_admin["password"]),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def ensure_user_store() -> Path:
     _USER_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not _USER_STORE_PATH.exists():
-        now = _now_text()
-        data = {
-            "users": [
-                {
-                    "username": "admin",
-                    "group": GROUP_ADMIN,
-                    "password": _hash_password("Admin123"),
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            ]
-        }
-        _write_store(data)
-        return _USER_STORE_PATH
-
     data = _read_store()
     users = data.get("users", [])
-    _, admin = _find_user(users, "admin")
-    if admin is None:
-        now = _now_text()
-        users.append(
-            {
-                "username": "admin",
-                "group": GROUP_ADMIN,
-                "password": _hash_password("Admin123"),
-                "created_at": now,
-                "updated_at": now,
-            }
+
+    if users:
+        return _USER_STORE_PATH
+
+    bootstrap_admin = _get_bootstrap_admin()
+    if bootstrap_admin is None:
+        raise RuntimeError(
+            "users.json 為空且未提供 bootstrap admin。請透過 Secret/env 設定 WEBAPP_BOOTSTRAP_ADMIN_USERNAME 與 WEBAPP_BOOTSTRAP_ADMIN_PASSWORD"
         )
-        data["users"] = users
-        _write_store(data)
+
+    data["users"] = [_build_bootstrap_user(bootstrap_admin)]
+    _write_store(data)
     return _USER_STORE_PATH
 
 

@@ -31,6 +31,36 @@ router = APIRouter()
 templates = Jinja2Templates(directory="webapp/app/templates")
 
 
+def _read_csv_preview(csv_path, max_rows: int = 200) -> tuple[list[str], list[list[str]], bool]:
+    text = csv_path.read_text(encoding="utf-8-sig")
+    sample = text[:8192]
+
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.get_dialect("excel")
+
+    reader = csv.reader(text.splitlines(), dialect=dialect)
+    headers: list[str] = []
+    rows: list[list[str]] = []
+    truncated = False
+
+    for row in reader:
+        if not row or not any((cell or "").strip() for cell in row):
+            continue
+        if not headers:
+            headers = row
+            continue
+        if len(rows) >= max_rows:
+            truncated = True
+            break
+        if len(row) < len(headers):
+            row = row + [""] * (len(headers) - len(row))
+        rows.append(row)
+
+    return headers, rows, truncated
+
+
 def _list_projects() -> list[str]:
     if not SCENARIO_DIR.exists():
         return []
@@ -269,16 +299,7 @@ def datasets_page(request: Request, file: Optional[str] = None, project: Optiona
             elif file not in datasets:
                 preview_error = "目前專案篩選下無法瀏覽此檔案，請切換專案後再試"
             else:
-                with selected_path.open("r", encoding="utf-8-sig", newline="") as fp:
-                    reader = csv.reader(fp)
-                    for index, row in enumerate(reader):
-                        if index == 0:
-                            preview_headers = row
-                            continue
-                        if len(preview_rows) >= 200:
-                            preview_truncated = True
-                            break
-                        preview_rows.append(row)
+                preview_headers, preview_rows, preview_truncated = _read_csv_preview(selected_path, max_rows=200)
         except ValueError:
             preview_error = "不合法的檔案路徑"
         except Exception as exc:

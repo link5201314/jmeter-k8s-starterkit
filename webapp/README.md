@@ -34,7 +34,12 @@
 
 - 帳號資料儲存在 `webapp/data/users.json`
 - 密碼欄位使用 PBKDF2-SHA256 加鹽雜湊儲存（不存明碼）
-- 預設帳號：`admin`（群組 `Admin`，預設密碼 `Admin123`）
+- 首次部署（`users.json` 不存在或為空）需提供 bootstrap admin：
+    - `WEBAPP_BOOTSTRAP_ADMIN_USERNAME`
+    - `WEBAPP_BOOTSTRAP_ADMIN_PASSWORD`
+    - `WEBAPP_BOOTSTRAP_ADMIN_GROUP`（可省略，預設 `Admin`）
+
+> 建議在 Kubernetes 使用 Secret 注入環境變數，不要把帳密寫在 image 或原始碼裡。
 
 群組權限：
 
@@ -217,6 +222,18 @@ skopeo inspect docker://docker.io/isaac0815/jmeter-webapp:latest | sed -n '1,20p
 
 ### C. 啟動 / 更新 k8s（Helm）
 
+首次部署（且 `webapp/data` PVC 是空的）請先建立 bootstrap admin Secret：
+
+```bash
+kubectl apply -f k8s/helm/environments/lab.webapp-bootstrap-admin-secret.yaml
+```
+
+dr-prod 可用：
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-bootstrap-admin-secret.yaml
+```
+
 部署（lab）範例：
 
 ```bash
@@ -225,6 +242,54 @@ helm upgrade --install perf-stack k8s/helm \
         -n performance-test --create-namespace \
         -f k8s/helm/environments/lab.yaml
 ```
+
+> 每次你有修改 `k8s/helm/charts/*` 子 chart（例如 webapp template / values）後，請先執行 `helm dependency build k8s/helm` 再 `helm upgrade`，避免實際部署仍套用舊版子 chart 內容。
+
+若首次部署後 `scenario` PVC 為空，可把 repo 內既有資料拷貝到 webapp 掛載路徑：
+
+```bash
+# 1) 取得 webapp pod
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+
+# 2) 建立目錄（若已存在可忽略）
+kubectl -n performance-test exec "$WEBAPP_POD" -- mkdir -p /workspace/scenario/dataset
+
+# 3) 拷貝單一 JMeter 專案目錄（例：demoweb）
+kubectl -n performance-test cp scenario/demoweb "$WEBAPP_POD":/workspace/scenario/demoweb
+
+# 4) 拷貝單一 dataset 檔案（例：test-dataset.csv）
+kubectl -n performance-test cp scenario/dataset/demoweb_login-user.csv "$WEBAPP_POD":/workspace/scenario/dataset/demoweb_login-user.csv
+
+# 5) 驗證檔案已存在
+kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario
+kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario/dataset
+```
+
+若你要一次同步整個 `scenario` 目錄（包含多個專案與 dataset），可改用：
+
+```bash
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+kubectl -n performance-test cp scenario/. "$WEBAPP_POD":/workspace/scenario/
+```
+
+若你有在環境內新增帳號（例如 `test1`），建議在升版前先備份 `users.json`：
+
+```bash
+# 備份 users.json 到本機
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+kubectl -n performance-test cp "$WEBAPP_POD":/workspace/webapp/data/users.json ./users.backup.json
+```
+
+若因 PVC 重建或設定異動導致帳號遺失，可回寫：
+
+```bash
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+kubectl -n performance-test cp ./users.backup.json "$WEBAPP_POD":/workspace/webapp/data/users.json
+kubectl -n performance-test rollout restart deploy/jmeter-webapp
+kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
+```
+
+> 若 `webapp/data` PVC 被刪除重建，舊 `users.json` 不會保留；此時沒有備份就只能用 bootstrap admin 重新建立帳號。
 
 如果你只要讓 webapp 重新拉取新版 `latest`，可直接重啟 deployment：
 
@@ -249,6 +314,13 @@ kubectl -n performance-test get pod -l app=jmeter-webapp \
 - 若持續使用 `latest`，建議設定 `pullPolicy: Always`，並在每次 push 後執行 `rollout restart`。
 
 > 重要：`jmeter-webapp` 必須掛載與 JMeter master 相同的 PVC（`jmeter-data-dir-pvc`）到 `/workspace/report`，否則網站看不到剛產生的報告。
+
+此外，webapp 另外使用兩個持久化掛載：
+
+- `/workspace/scenario`：保存 Scenario/JMX/Dataset
+- `/workspace/webapp/data`：保存 `users.json`、`upload_owners.json`、`secrets/`
+
+如此可避免重建 image 或 rollout 時覆蓋環境內既有資料。
 
 若你的叢集是 `containerd`（例如 k3s），建議用以下流程（Podman build 後匯入 containerd）：
 
