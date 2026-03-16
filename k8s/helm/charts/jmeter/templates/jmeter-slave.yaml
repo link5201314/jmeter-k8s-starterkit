@@ -87,6 +87,8 @@ spec:
         image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.global.slave.image.repository }}{{- if .Values.global.slave.image.digest }}@{{ .Values.global.slave.image.digest }}{{- else }}:{{ .Values.global.slave.image.tag }}{{- end }}"
         imagePullPolicy: {{ .Values.global.slave.image.pullPolicy }}
         env:
+        - name: TZ
+          value: {{ .Values.timezone | default "UTC" | quote }}
         - name: MODE
           value: "SLAVE"
         command: ["/bin/bash"]

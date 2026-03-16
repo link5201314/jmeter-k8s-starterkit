@@ -3,6 +3,10 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ .Values.scenarioPvc.claimName }}
+  {{- if .Values.scenarioPvc.keepOnUninstall }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
   labels:
     app: jmeter-webapp
 spec:
@@ -21,6 +25,10 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ .Values.dataPvc.claimName }}
+  {{- if .Values.dataPvc.keepOnUninstall }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
   labels:
     app: jmeter-webapp
 spec:

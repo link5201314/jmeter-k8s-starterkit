@@ -40,3 +40,5 @@ global:
 slaves:
   parallelism: 1
 
+timezone: "Asia/Taipei"
+

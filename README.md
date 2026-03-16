@@ -524,6 +524,7 @@ helm upgrade --install perf-stack k8s/helm \
 
 # 3) 移除 Helm 管理資源
 helm uninstall perf-stack -n performance-test
+helm uninstall jmeter-runtime -n performance-test
 
 # 4) 移除非 Helm 管理資源
 kubectl delete -f k8s/telegraf-operator.yaml

@@ -72,7 +72,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.03.13-filter-bootstrap-secret"
+    tag: "2026.03.16-tz-pvc-keep"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:
@@ -82,6 +82,7 @@ webapp:
     enabled: true
     existingClaim: ""
     claimName: jmeter-webapp-scenario-pvc
+    keepOnUninstall: true
     mountPath: /workspace/scenario
     accessModes:
       - ReadWriteMany
@@ -91,6 +92,7 @@ webapp:
     enabled: true
     existingClaim: ""
     claimName: jmeter-webapp-data-pvc
+    keepOnUninstall: true
     mountPath: /workspace/webapp/data
     accessModes:
       - ReadWriteMany

@@ -91,6 +91,8 @@ spec:
             - mountPath: /report
               name: jmeter-data-dir
         env:
+        - name: TZ
+          value: {{ .Values.timezone | default "UTC" | quote }}
         - name: MODE
           value: "MASTER"
         - name: NODE_NAME

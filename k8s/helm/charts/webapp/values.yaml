@@ -37,6 +37,7 @@ scenarioPvc:
   enabled: true
   existingClaim: ""
   claimName: jmeter-webapp-scenario-pvc
+  keepOnUninstall: true
   mountPath: /workspace/scenario
   accessModes:
     - ReadWriteMany
@@ -47,6 +48,7 @@ dataPvc:
   enabled: true
   existingClaim: ""
   claimName: jmeter-webapp-data-pvc
+  keepOnUninstall: true
   mountPath: /workspace/webapp/data
   accessModes:
     - ReadWriteMany
@@ -58,3 +60,5 @@ bootstrapAdmin:
   usernameKey: username
   passwordKey: password
   groupKey: group
+
+timezone: "Asia/Taipei"
