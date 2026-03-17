@@ -72,7 +72,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.03.16-tz-pvc-keep"
+    tag: "2026.03.17-log-filter-configmap"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:
@@ -103,3 +103,4 @@ webapp:
     usernameKey: username
     passwordKey: password
     groupKey: group
+  extraEnvFromConfigMap: jmeter-webapp-log-filter

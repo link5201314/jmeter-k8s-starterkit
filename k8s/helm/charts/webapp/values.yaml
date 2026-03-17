@@ -62,3 +62,7 @@ bootstrapAdmin:
   groupKey: group
 
 timezone: "Asia/Taipei"
+
+extraEnvFromConfigMap: ""
+
+extraEnv: {}

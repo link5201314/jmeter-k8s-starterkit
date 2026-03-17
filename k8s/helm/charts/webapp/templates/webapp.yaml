@@ -47,6 +47,10 @@ spec:
               value: {{ .Values.timezone | default "UTC" | quote }}
             - name: PYTHONUNBUFFERED
               value: "1"
+{{- range $name, $value := .Values.extraEnv }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+{{- end }}
 {{- if .Values.bootstrapAdmin.existingSecret }}
             - name: WEBAPP_BOOTSTRAP_ADMIN_USERNAME
               valueFrom:
@@ -68,6 +72,11 @@ spec:
                   key: {{ .Values.bootstrapAdmin.groupKey }}
                   optional: true
 {{- end }}
+{{- end }}
+{{- if .Values.extraEnvFromConfigMap }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Values.extraEnvFromConfigMap }}
 {{- end }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}

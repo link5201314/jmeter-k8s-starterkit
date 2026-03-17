@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jmeter-webapp-log-filter
+  namespace: performance-test
+data:
+  WEBAPP_IGNORED_JMETER_WARN_PATTERNS: |
+    WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release
+  WEBAPP_IGNORED_JMETER_INFO_PATTERNS: |
+    DataStrippingSampleSender: Using DataStrippingSampleSender for this run with stripAlsoOnError: true
+    StandardJMeterEngine: Thread will continue on error
+  WEBAPP_IGNORED_JMETER_ERROR_PATTERNS: |
+    Please check the standard output of the target process for a detailed error message.
+    Failed to perform cmdline operation: jmeter-plugins.org: Temporary failure in name resolution

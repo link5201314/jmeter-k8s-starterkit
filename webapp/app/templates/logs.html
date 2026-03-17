@@ -186,6 +186,10 @@
   </div>
 </div>
 
+<script id="jmeter-ignored-warn-patterns" type="application/json">{{ ignored_jmeter_warn_patterns | default([], true) | tojson }}</script>
+<script id="jmeter-ignored-info-patterns" type="application/json">{{ ignored_jmeter_info_patterns | default([], true) | tojson }}</script>
+<script id="jmeter-ignored-error-patterns" type="application/json">{{ ignored_jmeter_error_patterns | default([], true) | tojson }}</script>
+
 <script>
   (() => {
     const escapeHtml = (text) => text
@@ -416,18 +420,21 @@
     let jmeterSelectedKey = "";
     let jmeterHitIndex = -1;
 
-    const IGNORED_JMETER_WARN_PATTERNS = [
-      "WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release",
-    ];
+    const parseJsonArrayScript = (id) => {
+      const payload = document.getElementById(id)?.textContent || "[]";
+      try {
+        const parsed = JSON.parse(payload);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    };
 
-    const IGNORED_JMETER_ERROR_PATTERNS = [
-      "Please check the standard output of the target process for a detailed error message.",
-    ];
+    const IGNORED_JMETER_WARN_PATTERNS = parseJsonArrayScript("jmeter-ignored-warn-patterns");
 
-    const IGNORED_JMETER_INFO_PATTERNS = [
-      "DataStrippingSampleSender: Using DataStrippingSampleSender for this run with stripAlsoOnError: true",
-      "StandardJMeterEngine: Thread will continue on error",
-    ];
+    const IGNORED_JMETER_INFO_PATTERNS = parseJsonArrayScript("jmeter-ignored-info-patterns");
+
+    const IGNORED_JMETER_ERROR_PATTERNS = parseJsonArrayScript("jmeter-ignored-error-patterns");
 
     const jmeterRowKey = (entry) => `${entry.mode || ""}::${entry.pod || ""}::${entry.container || ""}`;
 

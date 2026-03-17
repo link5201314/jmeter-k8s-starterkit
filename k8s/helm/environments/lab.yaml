@@ -36,7 +36,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.03.16-tz-pvc-keep"
+    tag: "2026.03.17-log-filter-configmap"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:
@@ -64,3 +64,4 @@ webapp:
     usernameKey: username
     passwordKey: password
     groupKey: group
+  extraEnvFromConfigMap: jmeter-webapp-log-filter

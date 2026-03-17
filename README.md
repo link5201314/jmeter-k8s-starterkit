@@ -76,6 +76,43 @@ dr-prod 可用：
 kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-bootstrap-admin-secret.yaml
 ```
 
+另外，webapp 的 Logs 頁面目前也支援透過 `ConfigMap` 注入 JMeter log 忽略規則，避免只為了調整過濾條件而重打 image。
+
+- lab：`k8s/helm/environments/lab.webapp-log-filter-configmap.yaml`
+- dr-prod：`k8s/helm/environments/dr-prod.webapp-log-filter-configmap.yaml`
+
+目前支援以下三組設定（皆為「每行一條 pattern」）：
+
+- `WEBAPP_IGNORED_JMETER_WARN_PATTERNS`
+- `WEBAPP_IGNORED_JMETER_INFO_PATTERNS`
+- `WEBAPP_IGNORED_JMETER_ERROR_PATTERNS`
+
+首次部署或首次啟用這套機制時，建議順序如下：
+
+```bash
+# 1) 先建立 bootstrap admin secret
+kubectl apply -f k8s/helm/environments/lab.webapp-bootstrap-admin-secret.yaml
+
+# 2) 再建立 log filter configmap
+kubectl apply -f k8s/helm/environments/lab.webapp-log-filter-configmap.yaml
+
+# 3) 最後做 Helm upgrade/install
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/lab.yaml
+```
+
+> 原因：webapp deployment 會透過 `envFrom.configMapRef` 讀取 `jmeter-webapp-log-filter`。若先升版、`ConfigMap` 尚未存在，Pod 建立時可能因缺少參照來源而失敗。
+
+若之後只是調整忽略規則內容，而沒有修改 Helm chart/template，通常不需要再做 `helm upgrade`；只要重新套用 `ConfigMap` 並重啟 webapp 即可：
+
+```bash
+kubectl apply -f k8s/helm/environments/lab.webapp-log-filter-configmap.yaml
+kubectl -n performance-test rollout restart deploy/jmeter-webapp
+kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
+```
+
 再執行 Helm：
 
 ```bash
@@ -166,6 +203,7 @@ kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
 - webapp 透過 Helm / kubectl 操作同一套 k8s 資源（同 namespace）
 - webapp 的報表與 master 共用 PVC，才能即時瀏覽測試報告
 - 參數治理採三層覆蓋用詞：環境值檔（`k8s/helm/environments/*.yaml`）→ 專案覆寫值（`scenario/<project>/deploy.values.yaml`）→ 本次執行值（`start_test.sh`）
+- Logs 頁面的 JMeter `WARN / INFO / ERROR` 忽略清單已改由 `ConfigMap` 注入，預設檔位於 `k8s/helm/environments/*.webapp-log-filter-configmap.yaml`
 
 常見流程（摘要）：
 
@@ -173,6 +211,12 @@ kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
 2. 用 `skopeo inspect` 確認遠端 `Digest`
 3. 在 k8s 執行 `kubectl rollout restart deploy/jmeter-webapp`
 4. 以 pod `imageID`（`@sha256:...`）比對遠端 digest
+
+若只是調整 Logs 頁面的忽略規則，流程可再簡化為：
+
+1. 編輯 `k8s/helm/environments/*.webapp-log-filter-configmap.yaml`
+2. `kubectl apply -f ...webapp-log-filter-configmap.yaml`
+3. `kubectl rollout restart deploy/jmeter-webapp`
 
 ### Webapp 新增功能：資料庫還原（模擬送出）
 

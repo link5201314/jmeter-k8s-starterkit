@@ -1,4 +1,6 @@
 import csv
+import json
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -29,6 +31,28 @@ from webapp.app.services.db_restore_service import list_restore_envs
 
 router = APIRouter()
 templates = Jinja2Templates(directory="webapp/app/templates")
+
+
+def _env_list(name: str) -> list[str]:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return []
+
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(item).strip() for item in data if str(item).strip()]
+        except json.JSONDecodeError:
+            pass
+
+    values: list[str] = []
+    for chunk in raw.replace("\r\n", "\n").split("\n"):
+        for part in chunk.split(","):
+            text = part.strip()
+            if text:
+                values.append(text)
+    return values
 
 
 def _read_csv_preview(csv_path, max_rows: int = 200) -> tuple[list[str], list[list[str]], bool]:
@@ -382,6 +406,9 @@ def logs_page(request: Request):
             request,
             {
                 "projects": _list_projects(),
+                "ignored_jmeter_warn_patterns": _env_list("WEBAPP_IGNORED_JMETER_WARN_PATTERNS"),
+                "ignored_jmeter_info_patterns": _env_list("WEBAPP_IGNORED_JMETER_INFO_PATTERNS"),
+                "ignored_jmeter_error_patterns": _env_list("WEBAPP_IGNORED_JMETER_ERROR_PATTERNS"),
             },
         ),
     )

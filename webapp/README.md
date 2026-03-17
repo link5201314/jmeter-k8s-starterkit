@@ -29,6 +29,10 @@
 - 支援 Pod 關鍵字搜尋，快速定位特定 slave pod
 - 支援「只看異常 Pod（ERROR/WARN）」切換，排障時可先聚焦異常節點
 - Pod 清單提供異常摘要（E/W 計數）與狀態標記（正常/異常）
+- `WARN / INFO / ERROR` 三組忽略規則已改由 Kubernetes `ConfigMap` 注入，不再寫死在前端模板內
+- 對應設定檔：`k8s/helm/environments/lab.webapp-log-filter-configmap.yaml`、`k8s/helm/environments/dr-prod.webapp-log-filter-configmap.yaml`
+- 可設定的 key：`WEBAPP_IGNORED_JMETER_WARN_PATTERNS`、`WEBAPP_IGNORED_JMETER_INFO_PATTERNS`、`WEBAPP_IGNORED_JMETER_ERROR_PATTERNS`
+- 格式為「每行一條 pattern」；更新後需重新啟動 `jmeter-webapp` Pod 才會讀到新 env
 
 ## 帳號與權限
 
@@ -234,6 +238,20 @@ dr-prod 可用：
 kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-bootstrap-admin-secret.yaml
 ```
 
+若要啟用 Logs 頁面的 JMeter log 忽略規則，也請在 Helm 部署前先建立對應的 `ConfigMap`：
+
+```bash
+kubectl apply -f k8s/helm/environments/lab.webapp-log-filter-configmap.yaml
+```
+
+dr-prod 可用：
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-log-filter-configmap.yaml
+```
+
+> 因為 webapp deployment 會透過 `envFrom.configMapRef` 讀取 `jmeter-webapp-log-filter`，若先 `helm upgrade`、但 `ConfigMap` 尚未存在，Pod 建立時可能失敗。
+
 部署（lab）範例：
 
 ```bash
@@ -244,6 +262,19 @@ helm upgrade --install perf-stack k8s/helm \
 ```
 
 > 每次你有修改 `k8s/helm/charts/*` 子 chart（例如 webapp template / values）後，請先執行 `helm dependency build k8s/helm` 再 `helm upgrade`，避免實際部署仍套用舊版子 chart 內容。
+
+若之後只是調整忽略規則內容，而沒有修改 Helm chart / template，通常不需要再做 `helm upgrade`，只要：
+
+```bash
+kubectl apply -f k8s/helm/environments/lab.webapp-log-filter-configmap.yaml
+kubectl -n performance-test rollout restart deploy/jmeter-webapp
+kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
+```
+
+也就是說：
+
+- **首次導入機制**：先 `apply Secret` → `apply ConfigMap` → `helm upgrade --install`
+- **只更新規則內容**：`apply ConfigMap` → `rollout restart`
 
 若首次部署後 `scenario` PVC 為空，可把 repo 內既有資料拷貝到 webapp 掛載路徑：
 
