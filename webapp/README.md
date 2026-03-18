@@ -286,12 +286,15 @@ WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpat
 kubectl -n performance-test exec "$WEBAPP_POD" -- mkdir -p /workspace/scenario/dataset
 
 # 3) 拷貝單一 JMeter 專案目錄（例：demoweb）
-kubectl -n performance-test cp scenario/demoweb "$WEBAPP_POD":/workspace/scenario/demoweb
+kubectl -n performance-test cp scenario/demoweb "$WEBAPP_POD":/workspace/scenario/
 
-# 4) 拷貝單一 dataset 檔案（例：test-dataset.csv）
+# 4) 拷貝 JMeter 共用模組目錄目錄（例：module）
+kubectl -n performance-test cp scenario/module "$WEBAPP_POD":/workspace/scenario/module
+
+# 5) 拷貝單一 dataset 檔案（例：test-dataset.csv）
 kubectl -n performance-test cp scenario/dataset/demoweb_login-user.csv "$WEBAPP_POD":/workspace/scenario/dataset/demoweb_login-user.csv
 
-# 5) 驗證檔案已存在
+# 6) 驗證檔案已存在
 kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario
 kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario/dataset
 ```
