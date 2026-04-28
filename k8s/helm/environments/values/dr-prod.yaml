@@ -34,6 +34,10 @@ influxdb:
   image:
     repository: qa_team/jmeter-k8s-influxdb
     tag: "1.8"
+  pvc:
+    size: 30Gi
+    storageClassName: nfs-client
+  retentionDays: 14
 
 cleaner:
   image:

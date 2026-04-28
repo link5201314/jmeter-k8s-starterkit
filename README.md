@@ -744,6 +744,37 @@ helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespac
 ./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
 ```
 
+若 DR 環境中的 InfluxDB PVC 空間不足，可先臨時擴容，再執行 `helm upgrade` 套用固定值：
+
+```bash
+# 確認 storage class 是否支援 volume expansion(要先確認在哪個storageClass)
+kubectl get sc nutanix-volume -o yaml | grep -i allowVolumeExpansion
+
+# 臨時將 InfluxDB PVC 擴大到 30Gi
+kubectl -n performance-test patch pvc influxdb-pvc -p '{"spec":{"resources":{"requests":{"storage":"30Gi"}}}}'
+
+# 觀察 PVC 擴容狀態
+kubectl -n performance-test get pvc influxdb-pvc -w
+
+# 確認 Pod 內掛載空間已更新
+kubectl -n performance-test exec -it deploy/influxdb -- df -h /var/lib/influxdb
+
+# 將容量設定固定回 Helm values
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespace -f k8s/helm/environments/values/dr-prod.yaml
+```
+
+若 `nfs-client` 不支援 volume expansion，則需要改走新建較大 PVC 並搬移資料的方式處理。
+
+InfluxDB 目前可透過 Helm values 設定 retention：
+
+```yaml
+influxdb:
+  retentionDays: 14
+```
+
+- `retentionDays` 會在 InfluxDB 啟動後自動建立對應的 retention policy，並設成 telegraf 資料庫的預設 RP。
+
 ## Oracle Flashback 資料庫還原功能
 
 ### 功能介紹

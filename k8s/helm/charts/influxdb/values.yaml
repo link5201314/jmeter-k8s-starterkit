@@ -11,3 +11,11 @@ image:
 pvc:
   storageClassName: ""
   size: 5Gi
+
+retentionDays: 14
+retentionPolicyName: rp_14d
+retentionShardDuration: 1d
+
+initRetentionPolicy:
+  enabled: true
+  waitForReadySeconds: 120

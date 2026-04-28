@@ -32,6 +32,9 @@ cleaner:
   cronjob:
     cleanupDelaySeconds: 30
 
+influxdb:
+  retentionDays: 14
+
 webapp:
   enabled: true
   image:

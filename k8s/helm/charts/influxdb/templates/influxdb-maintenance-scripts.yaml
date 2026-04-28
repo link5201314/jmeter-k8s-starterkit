@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: influxdb-maintenance-scripts
+  labels:
+    app: influxdb
+data:
+  ensure-retention.sh: |+
+    #!/bin/sh
+    set -eu
+
+    target_host="${INFLUXDB_TARGET_HOST:-127.0.0.1}"
+    wait_seconds={{ .Values.initRetentionPolicy.waitForReadySeconds | default 120 }}
+    database="${INFLUXDB_DB}"
+    policy_name="{{ .Values.retentionPolicyName }}"
+    retention_duration="{{ .Values.retentionDays }}d"
+    shard_duration="{{ .Values.retentionShardDuration }}"
+
+    attempt=0
+    until influx -host "$target_host" -port 8086 \
+      -username "$INFLUXDB_ADMIN_USER" \
+      -password "$INFLUXDB_ADMIN_USER_PASSWORD" \
+      -execute 'SHOW DATABASES' >/dev/null 2>&1; do
+      attempt=$((attempt + 1))
+      if [ "$attempt" -ge "$wait_seconds" ]; then
+        echo "[ERROR] timed out waiting for InfluxDB on ${target_host}" >&2
+        exit 1
+      fi
+      sleep 1
+    done
+
+    influx -host "$target_host" -port 8086 \
+      -username "$INFLUXDB_ADMIN_USER" \
+      -password "$INFLUXDB_ADMIN_USER_PASSWORD" \
+      -execute "CREATE DATABASE \"${database}\""
+
+    if influx -host "$target_host" -port 8086 \
+      -username "$INFLUXDB_ADMIN_USER" \
+      -password "$INFLUXDB_ADMIN_USER_PASSWORD" \
+      -execute "SHOW RETENTION POLICIES ON \"${database}\"" | grep -q "^${policy_name}[[:space:]]"; then
+      influx -host "$target_host" -port 8086 \
+        -username "$INFLUXDB_ADMIN_USER" \
+        -password "$INFLUXDB_ADMIN_USER_PASSWORD" \
+        -execute "ALTER RETENTION POLICY \"${policy_name}\" ON \"${database}\" DURATION ${retention_duration} REPLICATION 1 SHARD DURATION ${shard_duration} DEFAULT"
+    else
+      influx -host "$target_host" -port 8086 \
+        -username "$INFLUXDB_ADMIN_USER" \
+        -password "$INFLUXDB_ADMIN_USER_PASSWORD" \
+        -execute "CREATE RETENTION POLICY \"${policy_name}\" ON \"${database}\" DURATION ${retention_duration} REPLICATION 1 SHARD DURATION ${shard_duration} DEFAULT"
+    fi
