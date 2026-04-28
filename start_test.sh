@@ -44,7 +44,7 @@ usage()
   logit "INFO" "-V <versions> app versions, ';' separated (e.g. tip-web=1.0.1;gemfire=2.2.3)"
   logit "INFO" "-N <note> free-form notes"
   logit "INFO" "-F <file> meta env file (REPORT_ENV/REPORT_VERSIONS/REPORT_NOTE)"
-  logit "INFO" "--helm-env <name> helm env values name under k8s/helm/environments (default: lab)"
+    logit "INFO" "--helm-env <name> helm env values name under k8s/helm/environments/values (default: lab)"
   logit "INFO" "--helm-release <name> helm release name for jmeter chart (default: jmeter-runtime)"
   logit "INFO" "--helm-chart <path> helm chart path for jmeter resources (default: k8s/helm/charts/jmeter)"
   logit "INFO" "--jmeter-env-file <path> explicit env file for JVM/resource overrides"
@@ -242,7 +242,10 @@ if [ ! -f "scenario/${jmx_dir}/${jmx}" ]; then
     usage
 fi
 
-helm_env_file="${PWD}/k8s/helm/environments/${helm_env}.yaml"
+helm_env_file="${PWD}/k8s/helm/environments/values/${helm_env}.yaml"
+if [ ! -f "${helm_env_file}" ]; then
+    helm_env_file="${PWD}/k8s/helm/environments/${helm_env}.yaml"
+fi
 project_deploy_values="scenario/${jmx_dir}/deploy.values.yaml"
 jmeter_env_file=""
 

@@ -8,7 +8,15 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from webapp.app.core.config import CONFIG_DIR, HELM_ENV_DIR, REPORT_DIR, SCENARIO_DIR
+from pathlib import Path
+
+from webapp.app.core.config import (
+    CONFIG_DIR,
+    HELM_ENV_VALUES_DIR,
+    HELM_ENV_LEGACY_DIR,
+    REPORT_DIR,
+    SCENARIO_DIR,
+)
 from webapp.app.services.auth_service import (
     GROUPS,
     can_drive_tests,
@@ -39,6 +47,12 @@ def _is_selectable_helm_env_file(path) -> bool:
     # Only show helm values env files; hide operational manifests like Secret/ConfigMap.
     blocked_tokens = ("-secret", "-configmap")
     return not any(token in path.stem for token in blocked_tokens)
+
+
+def _helm_env_dir() -> Path:
+    if HELM_ENV_VALUES_DIR.exists() and HELM_ENV_VALUES_DIR.is_dir():
+        return HELM_ENV_VALUES_DIR
+    return HELM_ENV_LEGACY_DIR
 
 
 def _env_list(name: str) -> list[str]:
@@ -256,9 +270,10 @@ def tests_page(request: Request):
     if isinstance(user, Response):
         return user
     projects = _list_projects()
+    env_dir = _helm_env_dir()
     helm_envs = (
-        sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if _is_selectable_helm_env_file(p)])
-        if HELM_ENV_DIR.exists()
+        sorted([p.stem for p in env_dir.glob("*.yaml") if _is_selectable_helm_env_file(p)])
+        if env_dir.exists()
         else []
     )
     return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects, "helm_envs": helm_envs}))
@@ -294,9 +309,10 @@ def configs_page(request: Request):
     user = _config_manage_required(request)
     if isinstance(user, Response):
         return user
+    env_dir = _helm_env_dir()
     helm_envs = (
-        sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if _is_selectable_helm_env_file(p)])
-        if HELM_ENV_DIR.exists()
+        sorted([p.stem for p in env_dir.glob("*.yaml") if _is_selectable_helm_env_file(p)])
+        if env_dir.exists()
         else []
     )
     return templates.TemplateResponse(

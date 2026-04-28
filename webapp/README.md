@@ -30,7 +30,7 @@
 - 支援「只看異常 Pod（ERROR/WARN）」切換，排障時可先聚焦異常節點
 - Pod 清單提供異常摘要（E/W 計數）與狀態標記（正常/異常）
 - `WARN / INFO / ERROR` 三組忽略規則已改由 Kubernetes `ConfigMap` 注入，不再寫死在前端模板內
-- 對應設定檔：`k8s/helm/environments/lab.webapp-log-filter-configmap.yaml`、`k8s/helm/environments/dr-prod.webapp-log-filter-configmap.yaml`
+- 對應設定檔：`k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml`、`k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml`
 - 可設定的 key：`WEBAPP_IGNORED_JMETER_WARN_PATTERNS`、`WEBAPP_IGNORED_JMETER_INFO_PATTERNS`、`WEBAPP_IGNORED_JMETER_ERROR_PATTERNS`
 - 格式為「每行一條 pattern」；更新後需重新啟動 `jmeter-webapp` Pod 才會讀到新 env
 
@@ -229,25 +229,25 @@ skopeo inspect docker://docker.io/isaac0815/jmeter-webapp:latest | sed -n '1,20p
 首次部署（且 `webapp/data` PVC 是空的）請先建立 bootstrap admin Secret：
 
 ```bash
-kubectl apply -f k8s/helm/environments/lab.webapp-bootstrap-admin-secret.yaml
+kubectl apply -f k8s/helm/environments/resources/lab/webapp-bootstrap-admin-secret.yaml
 ```
 
 dr-prod 可用：
 
 ```bash
-kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-bootstrap-admin-secret.yaml
+kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/webapp-bootstrap-admin-secret.yaml
 ```
 
 若要啟用 Logs 頁面的 JMeter log 忽略規則，也請在 Helm 部署前先建立對應的 `ConfigMap`：
 
 ```bash
-kubectl apply -f k8s/helm/environments/lab.webapp-log-filter-configmap.yaml
+kubectl apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml
 ```
 
 dr-prod 可用：
 
 ```bash
-kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-log-filter-configmap.yaml
+kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml
 ```
 
 > 因為 webapp deployment 會透過 `envFrom.configMapRef` 讀取 `jmeter-webapp-log-filter`，若先 `helm upgrade`、但 `ConfigMap` 尚未存在，Pod 建立時可能失敗。
@@ -258,7 +258,7 @@ kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.webapp-log-fi
 helm dependency build k8s/helm
 helm upgrade --install perf-stack k8s/helm \
         -n performance-test --create-namespace \
-        -f k8s/helm/environments/lab.yaml
+        -f k8s/helm/environments/values/lab.yaml
 ```
 
 > 每次你有修改 `k8s/helm/charts/*` 子 chart（例如 webapp template / values）後，請先執行 `helm dependency build k8s/helm` 再 `helm upgrade`，避免實際部署仍套用舊版子 chart 內容。
@@ -266,7 +266,7 @@ helm upgrade --install perf-stack k8s/helm \
 若之後只是調整忽略規則內容，而沒有修改 Helm chart / template，通常不需要再做 `helm upgrade`，只要：
 
 ```bash
-kubectl apply -f k8s/helm/environments/lab.webapp-log-filter-configmap.yaml
+kubectl apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml
 kubectl -n performance-test rollout restart deploy/jmeter-webapp
 kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
 ```

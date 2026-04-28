@@ -13,7 +13,8 @@ from fastapi.responses import FileResponse
 from webapp.app.core.config import (
     CONFIG_DIR,
     DATASET_DIR,
-    HELM_ENV_DIR,
+    HELM_ENV_VALUES_DIR,
+    HELM_ENV_LEGACY_DIR,
     PROJECT_TEMPLATE_FALLBACK_DIR,
     REPO_ROOT,
     REPORT_DIR,
@@ -57,9 +58,15 @@ def _is_selectable_helm_env_file(path: Path) -> bool:
     blocked_tokens = ("-secret", "-configmap")
     return not any(token in path.stem for token in blocked_tokens)
 
+
+def _helm_env_dir() -> Path:
+    if HELM_ENV_VALUES_DIR.exists() and HELM_ENV_VALUES_DIR.is_dir():
+        return HELM_ENV_VALUES_DIR
+    return HELM_ENV_LEGACY_DIR
+
 @router.get("/helm-envs", summary="List available helm environment yaml files")
 def list_helm_envs():
-    env_dir = HELM_ENV_DIR
+    env_dir = _helm_env_dir()
     if not env_dir.exists() or not env_dir.is_dir():
         return {"files": []}
     files = [f.name for f in env_dir.iterdir() if _is_selectable_helm_env_file(f)]
@@ -451,7 +458,8 @@ def db_restore_preview(
 
 @router.get("/configs/helm", dependencies=[Depends(require_config_management)])
 def get_helm_values(name: str):
-    target = ensure_subpath(HELM_ENV_DIR, HELM_ENV_DIR / name)
+    env_dir = _helm_env_dir()
+    target = ensure_subpath(env_dir, env_dir / name)
     return {
         "name": name,
         "content": read_text(target),
@@ -461,7 +469,8 @@ def get_helm_values(name: str):
 
 @router.post("/configs/helm", dependencies=[Depends(require_config_management)])
 def save_helm_values(name: str = Form(...), content: str = Form(...)):
-    target = ensure_subpath(HELM_ENV_DIR, HELM_ENV_DIR / name)
+    env_dir = _helm_env_dir()
+    target = ensure_subpath(env_dir, env_dir / name)
     write_text(target, content)
     return {
         "ok": True,
