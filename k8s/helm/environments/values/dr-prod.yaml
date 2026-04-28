@@ -76,7 +76,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.04.28-ui-fix"
+    tag: "2026.04.28-ui-fix2"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:

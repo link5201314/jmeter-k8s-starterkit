@@ -4,8 +4,8 @@
 <div class="card shadow-sm mb-4">
   <div class="card-header">Oracle Flashback 資料庫還原</div>
   <div class="card-body">
-    <form id="flashback-form" class="row g-3">
-      <div class="col-md-3">
+    <form id="flashback-form" class="row g-3 align-items-end">
+      <div class="col-md-4">
         <label class="form-label">環境</label>
         <select class="form-select" name="env" id="env-select" required>
           <option value="">-- 請選擇環境 --</option>
@@ -13,34 +13,41 @@
           <option value="dr-prod">DR-PROD</option>
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
         <label class="form-label">PDB 名稱</label>
         <input class="form-control" name="pdb_name" id="pdb-name" placeholder="CDBC1" required>
       </div>
-      <div class="col-md-3">
-        <label class="form-label">還原點名稱</label>
-        <input class="form-control" name="restore_point" id="restore-point" placeholder="例：RP_20260327_153000">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">&nbsp;</label>
+      <div class="col-md-4">
         <div class="d-grid">
-          <button type="button" class="btn btn-info btn-sm" id="refresh-rp-btn">重新整理還原點</button>
+          <button type="button" class="btn btn-info" id="query-rp-btn">查詢還原點</button>
         </div>
       </div>
     </form>
+
+    <div class="mt-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">還原點清單</h6>
+      </div>
+      <div id="restore-point-empty" class="text-muted small">尚未查詢還原點</div>
+      <div id="restore-point-list" class="list-group"></div>
+    </div>
   </div>
 </div>
 
 <div class="card shadow-sm mb-4">
-  <div class="card-header">操作</div>
+  <div class="card-header">建立還原點</div>
   <div class="card-body">
-    <div class="btn-group w-100" role="group">
-      <button type="button" class="btn btn-primary" id="create-rp-btn">1. 建立還原點</button>
-      <button type="button" class="btn btn-outline-primary" id="list-rp-btn">2. 查詢還原點</button>
-      <button type="button" class="btn btn-outline-danger" id="delete-rp-btn">3. 刪除還原點</button>
-      <button type="button" class="btn btn-outline-warning" id="check-process-btn">4. 查詢還原進度</button>
-      <button type="button" class="btn btn-warning" id="restore-rp-btn">5. 執行還原</button>
-    </div>
+    <form id="create-rp-form" class="row g-3 align-items-end">
+      <div class="col-md-8">
+        <label class="form-label" for="create-restore-point">還原點名稱</label>
+        <input class="form-control" name="restore_point" id="create-restore-point" placeholder="例：RP_20260327_153000" required>
+      </div>
+      <div class="col-md-4">
+        <div class="d-grid">
+          <button type="button" class="btn btn-primary" id="create-rp-btn">建立還原點</button>
+        </div>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -78,6 +85,9 @@
     const outputContent = document.getElementById("output-content");
     const errorContent = document.getElementById("error-content");
     const statusContent = document.getElementById("status-content");
+    const restorePointList = document.getElementById("restore-point-list");
+    const restorePointEmpty = document.getElementById("restore-point-empty");
+    const createRestorePointInput = document.getElementById("create-restore-point");
 
     const toParams = (formData) => {
       const params = new URLSearchParams();
@@ -87,7 +97,7 @@
       return params;
     };
 
-    const showStatus = (message, isError = false) => {
+    const showStatus = (message) => {
       statusContent.textContent = message;
       document.getElementById("status-tab").click();
     };
@@ -100,6 +110,82 @@
     const showOutput = (message) => {
       outputContent.textContent = message;
       document.getElementById("output-tab").click();
+    };
+
+    const getBaseValues = () => {
+      return {
+        env: (form.elements["env"].value || "").trim(),
+        pdbName: (form.elements["pdb_name"].value || "").trim(),
+      };
+    };
+
+    const buildBaseFormData = () => {
+      const { env, pdbName } = getBaseValues();
+      const fd = new FormData();
+      fd.set("env", env);
+      fd.set("pdb_name", pdbName);
+      return fd;
+    };
+
+    const renderRestorePoints = (restorePoints) => {
+      restorePointList.innerHTML = "";
+
+      if (!Array.isArray(restorePoints) || restorePoints.length === 0) {
+        restorePointEmpty.textContent = "查無還原點";
+        restorePointEmpty.classList.remove("d-none");
+        return;
+      }
+
+      restorePointEmpty.classList.add("d-none");
+      for (const rp of restorePoints) {
+        const item = document.createElement("div");
+        item.className = "list-group-item d-flex justify-content-between align-items-center gap-3";
+
+        const title = document.createElement("span");
+        title.className = "fw-semibold";
+        title.textContent = rp;
+
+        const actionWrap = document.createElement("div");
+        actionWrap.className = "d-flex gap-2";
+
+        const restoreBtn = document.createElement("button");
+        restoreBtn.type = "button";
+        restoreBtn.className = "btn btn-sm btn-warning";
+        restoreBtn.textContent = "執行還原";
+        restoreBtn.addEventListener("click", async () => {
+          if (!confirm(`確認要執行還原點 ${rp} 的 Flashback Restore 嗎？`)) {
+            return;
+          }
+          const fd = buildBaseFormData();
+          fd.set("restore_point", rp);
+          const payload = await executeOperation("/api/oracle-flashback/restore-rp", fd);
+          if (payload && payload.ok) {
+            await queryRestorePoints();
+          }
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn btn-sm btn-outline-danger";
+        deleteBtn.textContent = "刪除還原點";
+        deleteBtn.addEventListener("click", async () => {
+          if (!confirm(`確認要刪除還原點 ${rp} 嗎？此操作無法復原。`)) {
+            return;
+          }
+          const fd = buildBaseFormData();
+          fd.set("restore_point", rp);
+          const payload = await executeOperation("/api/oracle-flashback/delete-rp", fd);
+          if (payload && payload.ok) {
+            await queryRestorePoints();
+          }
+        });
+
+        actionWrap.appendChild(restoreBtn);
+        actionWrap.appendChild(deleteBtn);
+        item.appendChild(title);
+        item.appendChild(actionWrap);
+        restorePointList.appendChild(item);
+      }
     };
 
     async function executeOperation(apiEndpoint, formData) {
@@ -118,7 +204,7 @@
         
         if (!response.ok) {
           showError(payload.detail || `HTTP ${response.status}`);
-          return;
+          return null;
         }
 
         showOutput(payload.output || "");
@@ -136,15 +222,15 @@
           statusMsg += `還原進行中: ${payload.in_progress ? "是" : "否"}\n`;
         }
         showStatus(statusMsg);
+        return payload;
       } catch (error) {
         showError(`錯誤: ${error.message}`);
+        return null;
       }
     }
 
-    // Validate inputs
-    const validateInputs = (needRestorePoint = false) => {
-      const env = form.querySelector("input[name='env'], select[name='env']").value || form.elements["env"].value;
-      const pdbName = form.elements["pdb_name"].value.trim();
+    const validateBaseInputs = () => {
+      const { env, pdbName } = getBaseValues();
 
       if (!env) {
         showError("請選擇環境");
@@ -155,74 +241,44 @@
         return false;
       }
 
-      if (needRestorePoint) {
-        const restorePoint = form.elements["restore_point"].value.trim();
-        if (!restorePoint) {
-          showError("請輸入還原點名稱");
-          return false;
-        }
+      return true;
+    };
+
+    const validateCreateInputs = () => {
+      if (!validateBaseInputs()) {
+        return false;
+      }
+
+      const restorePoint = createRestorePointInput.value.trim();
+      if (!restorePoint) {
+        showError("請輸入還原點名稱");
+        return false;
       }
 
       return true;
     };
 
-    // Button handlers
-    document.getElementById("create-rp-btn").addEventListener("click", () => {
-      if (!validateInputs(true)) return;
+    const queryRestorePoints = async () => {
+      if (!validateBaseInputs()) return;
 
-      const fd = new FormData(form);
-      const env = fd.get("env") || form.elements["env"].value;
-      fd.set("env", env);
-      executeOperation("/api/oracle-flashback/create-rp", fd);
-    });
-
-    document.getElementById("list-rp-btn").addEventListener("click", () => {
-      if (!validateInputs(false)) return;
-
-      const fd = new FormData(form);
-      const env = fd.get("env") || form.elements["env"].value;
-      fd.set("env", env);
-      executeOperation("/api/oracle-flashback/list-rp", fd);
-    });
-
-    document.getElementById("delete-rp-btn").addEventListener("click", () => {
-      if (!validateInputs(true)) return;
-
-      const fd = new FormData(form);
-      const env = fd.get("env") || form.elements["env"].value;
-      fd.set("env", env);
-      executeOperation("/api/oracle-flashback/delete-rp", fd);
-    });
-
-    document.getElementById("check-process-btn").addEventListener("click", () => {
-      if (!validateInputs(false)) return;
-
-      const fd = new FormData(form);
-      const env = fd.get("env") || form.elements["env"].value;
-      fd.set("env", env);
-      executeOperation("/api/oracle-flashback/check-process", fd);
-    });
-
-    document.getElementById("restore-rp-btn").addEventListener("click", () => {
-      if (!validateInputs(true)) return;
-
-      if (!confirm("確認要執行 Flashback Restore 嗎？此操作將關閉 PDB 並恢復到指定的還原點。")) {
-        return;
+      const payload = await executeOperation("/api/oracle-flashback/list-rp", buildBaseFormData());
+      if (payload && payload.ok) {
+        renderRestorePoints(payload.restore_points || []);
       }
+    };
 
-      const fd = new FormData(form);
-      const env = fd.get("env") || form.elements["env"].value;
-      fd.set("env", env);
-      executeOperation("/api/oracle-flashback/restore-rp", fd);
-    });
+    // Button handlers
+    document.getElementById("query-rp-btn").addEventListener("click", queryRestorePoints);
 
-    document.getElementById("refresh-rp-btn").addEventListener("click", () => {
-      if (!validateInputs(false)) return;
+    document.getElementById("create-rp-btn").addEventListener("click", async () => {
+      if (!validateCreateInputs()) return;
 
-      const fd = new FormData(form);
-      const env = fd.get("env") || form.elements["env"].value;
-      fd.set("env", env);
-      executeOperation("/api/oracle-flashback/list-rp", fd);
+      const fd = buildBaseFormData();
+      fd.set("restore_point", createRestorePointInput.value.trim());
+      const payload = await executeOperation("/api/oracle-flashback/create-rp", fd);
+      if (payload && payload.ok) {
+        await queryRestorePoints();
+      }
     });
   })();
 </script>

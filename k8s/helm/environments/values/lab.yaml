@@ -39,7 +39,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.04.28-ui-fix"
+    tag: "2026.04.28-ui-fix2"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:
