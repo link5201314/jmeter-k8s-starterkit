@@ -38,15 +38,31 @@ from webapp.app.services.db_restore_service import (
     list_restore_envs,
     load_env_token,
 )
+from webapp.app.services.oracle_flashback_service import (
+    create_restore_point,
+    list_restore_points,
+    delete_restore_point,
+    check_flashback_process,
+    restore_restore_point,
+    load_ssh_config_from_k8s_secret,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
+
+
+def _is_selectable_helm_env_file(path: Path) -> bool:
+    if not path.is_file() or path.suffix != ".yaml":
+        return False
+    # Only show helm values env files; hide operational manifests like Secret/ConfigMap.
+    blocked_tokens = ("-secret", "-configmap")
+    return not any(token in path.stem for token in blocked_tokens)
 
 @router.get("/helm-envs", summary="List available helm environment yaml files")
 def list_helm_envs():
     env_dir = HELM_ENV_DIR
     if not env_dir.exists() or not env_dir.is_dir():
         return {"files": []}
-    files = [f.name for f in env_dir.iterdir() if f.is_file() and f.suffix == ".yaml" and "webapp-bootstrap-admin-secret" not in f.stem]
+    files = [f.name for f in env_dir.iterdir() if _is_selectable_helm_env_file(f)]
     return {"files": sorted(files)}
 
 _MAX_BATCH_REPORT_DOWNLOAD = 100
@@ -817,3 +833,178 @@ def download_report_batch_zip(
 
     make_reports_zip(REPORT_DIR, report_dirs, zip_path)
     return FileResponse(str(zip_path), filename=zip_filename)
+
+
+def _get_ssh_config_from_secret(env: str) -> dict:
+    """Load SSH config from K8s secret"""
+    secret_name = "oracle-flashback-ssh"
+    namespace = "performance-test"
+    
+    cmd = [
+        "kubectl",
+        "-n",
+        namespace,
+        "get",
+        "secret",
+        secret_name,
+        "-o",
+        "jsonpath={.data}",
+    ]
+    
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=10)
+        if proc.returncode != 0:
+            raise HTTPException(500, f"Failed to load SSH secret: {proc.stderr}")
+        
+        # kubectl returns base64 encoded values in JSON
+        import base64
+        secret_data = json.loads(proc.stdout)
+        decoded_data = {}
+        for key, value in secret_data.items():
+            try:
+                decoded_data[key] = base64.b64decode(value).decode("utf-8")
+            except Exception:
+                decoded_data[key] = value
+        
+        return load_ssh_config_from_k8s_secret(decoded_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error loading SSH config: {str(e)}")
+
+
+@router.post("/oracle-flashback/create-rp", dependencies=[Depends(require_drive_tests)])
+def oracle_flashback_create_rp(
+    env: str = Form(...),
+    pdb_name: str = Form(...),
+    restore_point: str = Form(...),
+):
+    """Create an Oracle Flashback restore point via SSH"""
+    try:
+        ssh_config = _get_ssh_config_from_secret(env)
+        result = create_restore_point(ssh_config, pdb_name, restore_point)
+        return {
+            "ok": result["success"],
+            "env": env,
+            "pdb": pdb_name,
+            "restore_point": restore_point,
+            "output": result["stdout"],
+            "error": result["stderr"],
+            "exit_code": result["exit_code"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error creating restore point: {str(e)}")
+
+
+@router.post("/oracle-flashback/list-rp", dependencies=[Depends(require_drive_tests)])
+def oracle_flashback_list_rp(
+    env: str = Form(...),
+    pdb_name: str = Form(...),
+):
+    """List available Oracle Flashback restore points via SSH"""
+    try:
+        ssh_config = _get_ssh_config_from_secret(env)
+        result = list_restore_points(ssh_config, pdb_name)
+        
+        # Parse restore points from output
+        restore_points = []
+        for line in result["stdout"].split("\n"):
+            line = line.strip()
+            if line.startswith("RESTORE POINT:"):
+                rp_name = line.replace("RESTORE POINT:", "").strip()
+                if rp_name:
+                    restore_points.append(rp_name)
+        
+        return {
+            "ok": result["success"],
+            "env": env,
+            "pdb": pdb_name,
+            "restore_points": restore_points,
+            "output": result["stdout"],
+            "error": result["stderr"],
+            "exit_code": result["exit_code"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error listing restore points: {str(e)}")
+
+
+@router.post("/oracle-flashback/delete-rp", dependencies=[Depends(require_drive_tests)])
+def oracle_flashback_delete_rp(
+    env: str = Form(...),
+    pdb_name: str = Form(...),
+    restore_point: str = Form(...),
+):
+    """Delete an Oracle Flashback restore point via SSH"""
+    try:
+        ssh_config = _get_ssh_config_from_secret(env)
+        result = delete_restore_point(ssh_config, pdb_name, restore_point)
+        return {
+            "ok": result["success"],
+            "env": env,
+            "pdb": pdb_name,
+            "restore_point": restore_point,
+            "output": result["stdout"],
+            "error": result["stderr"],
+            "exit_code": result["exit_code"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error deleting restore point: {str(e)}")
+
+
+@router.post("/oracle-flashback/check-process", dependencies=[Depends(require_drive_tests)])
+def oracle_flashback_check_process(
+    env: str = Form(...),
+    pdb_name: str = Form(...),
+):
+    """Check if Flashback Restore is in progress via SSH"""
+    try:
+        ssh_config = _get_ssh_config_from_secret(env)
+        result = check_flashback_process(ssh_config, pdb_name)
+        
+        # Determine if restore is in progress
+        in_progress = "No Restore process" not in result["stdout"]
+        
+        return {
+            "ok": result["success"],
+            "env": env,
+            "pdb": pdb_name,
+            "in_progress": in_progress,
+            "output": result["stdout"],
+            "error": result["stderr"],
+            "exit_code": result["exit_code"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error checking flashback process: {str(e)}")
+
+
+@router.post("/oracle-flashback/restore-rp", dependencies=[Depends(require_drive_tests)])
+def oracle_flashback_restore_rp(
+    env: str = Form(...),
+    pdb_name: str = Form(...),
+    restore_point: str = Form(...),
+):
+    """Execute Flashback Restore to a restore point via SSH"""
+    try:
+        ssh_config = _get_ssh_config_from_secret(env)
+        result = restore_restore_point(ssh_config, pdb_name, restore_point)
+        return {
+            "ok": result["success"],
+            "env": env,
+            "pdb": pdb_name,
+            "restore_point": restore_point,
+            "output": result["stdout"],
+            "error": result["stderr"],
+            "exit_code": result["exit_code"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error restoring to restore point: {str(e)}")

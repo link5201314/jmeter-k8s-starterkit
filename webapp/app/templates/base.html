@@ -16,7 +16,8 @@
         <div class="navbar-nav">
           {% if can_drive_tests %}
           <a class="nav-link" href="/tests">測試驅動</a>
-          <a class="nav-link" href="/db-restore">資料庫還原</a>
+          <!-- <a class="nav-link" href="/db-restore">資料庫還原（舊版Fast API）</a> -->
+          <a class="nav-link" href="/oracle-flashback">資料庫還原</a>
           {% endif %}
 
           {% if can_manage_configs %}

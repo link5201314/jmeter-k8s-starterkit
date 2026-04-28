@@ -36,7 +36,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.03.17-log-filter-configmap"
+    tag: "2026.04.28-oracle-flashback"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:

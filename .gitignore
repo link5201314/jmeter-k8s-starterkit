@@ -29,3 +29,6 @@ webapp/logs/*
 !webapp/logs/.gitkeep
 webapp/tmp/*
 !webapp/tmp/.gitkeep
+
+# K8s Secret files (contains sensitive credentials)
+k8s/helm/environments/dr-prod.oracle-flashback-secret.yaml

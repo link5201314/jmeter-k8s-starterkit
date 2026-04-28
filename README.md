@@ -743,3 +743,142 @@ helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespac
 # 停測並清掉 jmeter-runtime
 ./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
 ```
+
+## Oracle Flashback 資料庫還原功能
+
+### 功能介紹
+
+Webapp 提供 Oracle Flashback 資料庫還原功能，通過 SSH 連接到 Oracle 服務器執行還原操作。此功能支持以下 5 項操作：
+
+1. **建立還原點** (`create_rp.sh`)：為 PDB 建立 Oracle Flashback 還原點
+2. **查詢還原點** (`current_rp.sh`)：列出指定 PDB 的所有可用還原點
+3. **刪除還原點** (`delete_rp.sh`)：刪除指定 PDB 的還原點
+4. **查詢還原進度** (`fb_process.sh`)：查詢 Oracle 是否正在執行 Flashback Restore
+5. **執行還原** (`restore_rp.sh`)：執行 Flashback Restore 將 PDB 還原到指定的還原點
+
+### SSH 連接配置
+
+SSH 連接配置通過 Kubernetes Secret 管理。需要為 LAB 和 DR-Prod 環境各創建一份 Secret 配置：
+
+#### LAB 環境
+
+```bash
+kubectl apply -f k8s/helm/environments/lab.oracle-flashback-secret.yaml
+```
+
+或手動創建：
+
+```bash
+kubectl -n performance-test create secret generic oracle-flashback-ssh \
+  --from-literal=host=10.1.36.31 \
+  --from-literal=port=22 \
+  --from-literal=username=oracle \
+  --from-literal=password=<YOUR_PASSWORD> \
+  --from-literal=script_path=/home/oracle/scripts
+```
+
+#### DR-Prod 環境
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/dr-prod.oracle-flashback-secret.yaml
+```
+
+### 前置要求
+
+1. **遠端服務器**：需要在 `10.1.36.31` 上的 `/home/oracle/scripts` 目錄中存放以下 shell scripts：
+   - `create_rp.sh`
+   - `current_rp.sh`
+   - `delete_rp.sh`
+   - `fb_process.sh`
+   - `restore_rp.sh`
+
+2. **Python 依賴**：Webapp 需要 `paramiko` 庫來實現 SSH 連接：
+   ```bash
+   pip install paramiko
+   ```
+
+3. **SSH 認證**：需要有效的 Oracle 用戶帳號和密碼（或可配置密鑰認證）
+
+### 使用方式
+
+1. 登入 Webapp 管理平台（`http://<webapp-host>/`)
+2. 點擊導航菜單中的「資料庫還原」
+3. 選擇環境（LAB 或 DR-Prod）
+4. 輸入 PDB 名稱（例：CDBC1）
+5. 根據需要執行相應的操作：
+   - **建立還原點**：輸入還原點名稱，點擊「建立還原點」按鈕
+   - **查詢還原點**：點擊「查詢還原點」按鈕查看可用的還原點列表
+   - **刪除還原點**：輸入要刪除的還原點名稱，點擊「刪除還原點」按鈕
+   - **查詢還原進度**：點擊「查詢還原進度」按鈕查看當前是否有還原操作進行中
+   - **執行還原**：輸入目標還原點名稱，點擊「執行還原」按鈕（此操作會關閉 PDB 並執行還原，需要確認）
+
+### API 端點
+
+| 操作 | 方法 | 端點 | 說明 |
+|------|------|------|------|
+| 建立還原點 | POST | `/api/oracle-flashback/create-rp` | 建立新的還原點 |
+| 查詢還原點 | POST | `/api/oracle-flashback/list-rp` | 列出可用的還原點 |
+| 刪除還原點 | POST | `/api/oracle-flashback/delete-rp` | 刪除指定還原點 |
+| 查詢進度 | POST | `/api/oracle-flashback/check-process` | 檢查還原進程狀態 |
+| 執行還原 | POST | `/api/oracle-flashback/restore-rp` | 執行 Flashback Restore |
+
+### 請求參數
+
+所有 API 端點都支持以下參數（使用 `application/x-www-form-urlencoded` 格式）：
+
+| 參數 | 必需 | 說明 |
+|------|------|------|
+| `env` | 是 | 環境名稱（lab 或 dr-prod） |
+| `pdb_name` | 是 | PDB 名稱 |
+| `restore_point` | 部分 | 還原點名稱（建立、刪除、執行還原時必需） |
+
+### 響應格式
+
+所有 API 響應均返回 JSON 格式：
+
+```json
+{
+  "ok": true,
+  "env": "lab",
+  "pdb": "CDBC1",
+  "restore_point": "RP_20260327_153000",
+  "output": "...",
+  "error": "",
+  "exit_code": 0
+}
+```
+
+| 欄位 | 說明 |
+|------|------|
+| `ok` | 操作是否成功 |
+| `env` | 使用的環境 |
+| `pdb` | PDB 名稱 |
+| `restore_point` | 還原點名稱（如果適用） |
+| `output` | 命令執行的標準輸出 |
+| `error` | 命令執行的錯誤輸出 |
+| `exit_code` | Shell 命令的終止碼 |
+
+### 故障排查
+
+#### 連接失敗
+- 檢查 K8s Secret 中的 SSH 認證信息是否正確
+- 確認遠端服務器是否可達（檢查網路連線和防火牆規則）
+- 驗證 SSH 帳號和密碼是否有效
+
+#### 腳本執行失敗
+- 檢查遠端服務器上的 scripts 文件是否存在且有執行權限
+- 查看 API 響應中的 `error` 和 `output` 欄位以了解具體的錯誤信息
+- 確認 Oracle 環境變量設置是否正確（ORACLE_HOME、ORACLE_SID 等）
+
+#### 權限問題
+- 確保 Oracle 用戶有權執行 SQL Plus 命令並管理 restore points
+- 確認 Oracle 用戶能夠讀取和執行 `/home/oracle/scripts` 目錄中的腳本
+
+### 相關文件
+
+- K8s Secret 配置：
+  - [lab.oracle-flashback-secret.yaml](k8s/helm/environments/lab.oracle-flashback-secret.yaml)
+  - [dr-prod.oracle-flashback-secret.yaml](k8s/helm/environments/dr-prod.oracle-flashback-secret.yaml)
+- Webapp 服務模塊：[oracle_flashback_service.py](webapp/app/services/oracle_flashback_service.py)
+- API 路由：[routers/api.py](webapp/app/routers/api.py)
+- Web UI 模板：[templates/oracle_flashback.html](webapp/app/templates/oracle_flashback.html)

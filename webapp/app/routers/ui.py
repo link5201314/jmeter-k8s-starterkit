@@ -33,6 +33,14 @@ router = APIRouter()
 templates = Jinja2Templates(directory="webapp/app/templates")
 
 
+def _is_selectable_helm_env_file(path) -> bool:
+    if not path.is_file() or path.suffix != ".yaml":
+        return False
+    # Only show helm values env files; hide operational manifests like Secret/ConfigMap.
+    blocked_tokens = ("-secret", "-configmap")
+    return not any(token in path.stem for token in blocked_tokens)
+
+
 def _env_list(name: str) -> list[str]:
     raw = (os.getenv(name) or "").strip()
     if not raw:
@@ -248,7 +256,11 @@ def tests_page(request: Request):
     if isinstance(user, Response):
         return user
     projects = _list_projects()
-    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if "webapp-bootstrap-admin-secret" not in p.stem]) if HELM_ENV_DIR.exists() else []
+    helm_envs = (
+        sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if _is_selectable_helm_env_file(p)])
+        if HELM_ENV_DIR.exists()
+        else []
+    )
     return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects, "helm_envs": helm_envs}))
 
 
@@ -265,12 +277,28 @@ def db_restore_page(request: Request):
     )
 
 
+@router.get("/oracle-flashback")
+def oracle_flashback_page(request: Request):
+    user = _drive_tests_required(request)
+    if isinstance(user, Response):
+        return user
+
+    return templates.TemplateResponse(
+        "oracle_flashback.html",
+        _template_context(request),
+    )
+
+
 @router.get("/configs")
 def configs_page(request: Request):
     user = _config_manage_required(request)
     if isinstance(user, Response):
         return user
-    helm_envs = sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if "webapp-bootstrap-admin-secret" not in p.stem]) if HELM_ENV_DIR.exists() else []
+    helm_envs = (
+        sorted([p.stem for p in HELM_ENV_DIR.glob("*.yaml") if _is_selectable_helm_env_file(p)])
+        if HELM_ENV_DIR.exists()
+        else []
+    )
     return templates.TemplateResponse(
         "configs.html",
         _template_context(request, {"helm_envs": helm_envs}),

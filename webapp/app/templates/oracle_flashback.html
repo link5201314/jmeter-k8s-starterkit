@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Oracle Flashback 資料庫還原</div>
+  <div class="card-body">
+    <form id="flashback-form" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">環境</label>
+        <select class="form-select" name="env" id="env-select" required>
+          <option value="">-- 請選擇環境 --</option>
+          <option value="lab">LAB</option>
+          <option value="dr-prod">DR-PROD</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">PDB 名稱</label>
+        <input class="form-control" name="pdb_name" id="pdb-name" placeholder="CDBC1" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">還原點名稱</label>
+        <input class="form-control" name="restore_point" id="restore-point" placeholder="例：RP_20260327_153000">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">&nbsp;</label>
+        <div class="d-grid">
+          <button type="button" class="btn btn-info btn-sm" id="refresh-rp-btn">重新整理還原點</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">操作</div>
+  <div class="card-body">
+    <div class="btn-group w-100" role="group">
+      <button type="button" class="btn btn-primary" id="create-rp-btn">1. 建立還原點</button>
+      <button type="button" class="btn btn-outline-primary" id="list-rp-btn">2. 查詢還原點</button>
+      <button type="button" class="btn btn-outline-danger" id="delete-rp-btn">3. 刪除還原點</button>
+      <button type="button" class="btn btn-outline-warning" id="check-process-btn">4. 查詢還原進度</button>
+      <button type="button" class="btn btn-warning" id="restore-rp-btn">5. 執行還原</button>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">執行結果</div>
+  <div class="card-body">
+    <ul class="nav nav-tabs mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="output-tab" data-bs-toggle="tab" data-bs-target="#output-pane" type="button" role="tab">輸出</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="error-tab" data-bs-toggle="tab" data-bs-target="#error-pane" type="button" role="tab">錯誤</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="status-tab" data-bs-toggle="tab" data-bs-target="#status-pane" type="button" role="tab">狀態</button>
+      </li>
+    </ul>
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="output-pane" role="tabpanel">
+        <pre id="output-content" class="yaml-preview"># 尚未執行任何操作</pre>
+      </div>
+      <div class="tab-pane fade" id="error-pane" role="tabpanel">
+        <pre id="error-content" class="yaml-preview"># 尚未執行任何操作</pre>
+      </div>
+      <div class="tab-pane fade" id="status-pane" role="tabpanel">
+        <pre id="status-content" class="yaml-preview"># 尚未執行任何操作</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const form = document.getElementById("flashback-form");
+    const outputContent = document.getElementById("output-content");
+    const errorContent = document.getElementById("error-content");
+    const statusContent = document.getElementById("status-content");
+
+    const toParams = (formData) => {
+      const params = new URLSearchParams();
+      for (const [k, v] of formData.entries()) {
+        params.append(k, String(v || ""));
+      }
+      return params;
+    };
+
+    const showStatus = (message, isError = false) => {
+      statusContent.textContent = message;
+      document.getElementById("status-tab").click();
+    };
+
+    const showError = (message) => {
+      errorContent.textContent = message;
+      document.getElementById("error-tab").click();
+    };
+
+    const showOutput = (message) => {
+      outputContent.textContent = message;
+      document.getElementById("output-tab").click();
+    };
+
+    async function executeOperation(apiEndpoint, formData) {
+      try {
+        showStatus("執行中...");
+        
+        const response = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: toParams(formData).toString(),
+        });
+
+        const payload = await response.json();
+        
+        if (!response.ok) {
+          showError(payload.detail || `HTTP ${response.status}`);
+          return;
+        }
+
+        showOutput(payload.output || "");
+        if (payload.error) {
+          showError(payload.error);
+        }
+        
+        let statusMsg = `執行完成\n`;
+        statusMsg += `成功: ${payload.ok ? "是" : "否"}\n`;
+        statusMsg += `終止碼: ${payload.exit_code}\n`;
+        if (payload.restore_points) {
+          statusMsg += `還原點列表: ${payload.restore_points.join(", ")}\n`;
+        }
+        if (payload.in_progress !== undefined) {
+          statusMsg += `還原進行中: ${payload.in_progress ? "是" : "否"}\n`;
+        }
+        showStatus(statusMsg);
+      } catch (error) {
+        showError(`錯誤: ${error.message}`);
+      }
+    }
+
+    // Validate inputs
+    const validateInputs = (needRestorePoint = false) => {
+      const env = form.querySelector("input[name='env'], select[name='env']").value || form.elements["env"].value;
+      const pdbName = form.elements["pdb_name"].value.trim();
+
+      if (!env) {
+        showError("請選擇環境");
+        return false;
+      }
+      if (!pdbName) {
+        showError("請輸入 PDB 名稱");
+        return false;
+      }
+
+      if (needRestorePoint) {
+        const restorePoint = form.elements["restore_point"].value.trim();
+        if (!restorePoint) {
+          showError("請輸入還原點名稱");
+          return false;
+        }
+      }
+
+      return true;
+    };
+
+    // Button handlers
+    document.getElementById("create-rp-btn").addEventListener("click", () => {
+      if (!validateInputs(true)) return;
+
+      const fd = new FormData(form);
+      const env = fd.get("env") || form.elements["env"].value;
+      fd.set("env", env);
+      executeOperation("/api/oracle-flashback/create-rp", fd);
+    });
+
+    document.getElementById("list-rp-btn").addEventListener("click", () => {
+      if (!validateInputs(false)) return;
+
+      const fd = new FormData(form);
+      const env = fd.get("env") || form.elements["env"].value;
+      fd.set("env", env);
+      executeOperation("/api/oracle-flashback/list-rp", fd);
+    });
+
+    document.getElementById("delete-rp-btn").addEventListener("click", () => {
+      if (!validateInputs(true)) return;
+
+      const fd = new FormData(form);
+      const env = fd.get("env") || form.elements["env"].value;
+      fd.set("env", env);
+      executeOperation("/api/oracle-flashback/delete-rp", fd);
+    });
+
+    document.getElementById("check-process-btn").addEventListener("click", () => {
+      if (!validateInputs(false)) return;
+
+      const fd = new FormData(form);
+      const env = fd.get("env") || form.elements["env"].value;
+      fd.set("env", env);
+      executeOperation("/api/oracle-flashback/check-process", fd);
+    });
+
+    document.getElementById("restore-rp-btn").addEventListener("click", () => {
+      if (!validateInputs(true)) return;
+
+      if (!confirm("確認要執行 Flashback Restore 嗎？此操作將關閉 PDB 並恢復到指定的還原點。")) {
+        return;
+      }
+
+      const fd = new FormData(form);
+      const env = fd.get("env") || form.elements["env"].value;
+      fd.set("env", env);
+      executeOperation("/api/oracle-flashback/restore-rp", fd);
+    });
+
+    document.getElementById("refresh-rp-btn").addEventListener("click", () => {
+      if (!validateInputs(false)) return;
+
+      const fd = new FormData(form);
+      const env = fd.get("env") || form.elements["env"].value;
+      fd.set("env", env);
+      executeOperation("/api/oracle-flashback/list-rp", fd);
+    });
+  })();
+</script>
+{% endblock %}
