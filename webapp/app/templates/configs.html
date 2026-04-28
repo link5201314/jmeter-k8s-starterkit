@@ -10,6 +10,7 @@
           <div class="col-lg-5">
             <label class="form-label">環境</label>
             <select id="config-env" class="form-select" required>
+              <option value="" disabled selected>-- 請選擇環境 --</option>
               {% for env in helm_envs %}
               <option value="{{ env }}">{{ env }}</option>
               {% endfor %}

@@ -25,9 +25,10 @@
       </div>
       <div class="col-md-3">
         <label class="form-label">Helm Env</label>
-        <select class="form-select" name="helm_env">
+        <select class="form-select" name="helm_env" required>
+          <option value="" disabled selected>-- 請選擇環境 --</option>
           {% for env in helm_envs %}
-          <option value="{{ env }}" {% if env == 'lab' %}selected{% endif %}>{{ env }}</option>
+          <option value="{{ env }}">{{ env }}</option>
           {% endfor %}
         </select>
       </div>
