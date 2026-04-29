@@ -764,7 +764,7 @@ helm dependency build k8s/helm
 helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespace -f k8s/helm/environments/values/dr-prod.yaml
 ```
 
-若 `nfs-client` 不支援 volume expansion，則需要改走新建較大 PVC 並搬移資料的方式處理。
+若要擴充的PV不支援 volume expansion，則需要改走新建較大 PVC 並搬移資料的方式處理。
 
 InfluxDB 目前可透過 Helm values 設定 retention：
 

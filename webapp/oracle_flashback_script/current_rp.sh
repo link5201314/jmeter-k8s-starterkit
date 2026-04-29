@@ -65,7 +65,7 @@ count_rp=`echo ${ck_rp} | wc -w`
 if [ ${count_rp} == 0 ]
 then 
     echo "No Restore Poinrt Select"
-    exit 1
+    #exit 1
 fi
 
 select_rp_ck $pdb 
