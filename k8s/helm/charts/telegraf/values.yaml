@@ -9,3 +9,9 @@ image:
   pullPolicy: IfNotPresent
 
 rbac:
+  # Singleton strategy:
+  # - Primary namespace: true (create ClusterRole/ClusterRoleBinding)
+  # - Secondary namespaces: false (reuse existing cluster-scoped RBAC)
+  createClusterScopedResources: true
+  clusterRoleName: metrics-reader
+  clusterRoleBindingName: telegraf-metrics-reader

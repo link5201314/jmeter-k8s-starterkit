@@ -57,6 +57,87 @@ Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the 
 > - perf-stack 安裝時：global.pvc.enabled=true
 > - start_test.sh 執行時：--pvc-enabled false
 
+### Telegraf 子 chart（Cluster RBAC）單例策略
+
+為避免在多 namespace 安裝 `perf-stack` 時，重複建立 cluster-scoped RBAC（`ClusterRole` / `ClusterRoleBinding`）造成 ownership 衝突，telegraf 子 chart 已新增以下參數：
+
+```yaml
+telegraf:
+  rbac:
+    createClusterScopedResources: true
+    clusterRoleName: metrics-reader
+    clusterRoleBindingName: telegraf-metrics-reader
+```
+
+- 第一個（主）namespace：`createClusterScopedResources=true`（建立 cluster RBAC）
+- 第二個（次）namespace：`createClusterScopedResources=false`（重用既有 cluster RBAC，不再重建）
+
+範例：
+
+```bash
+# primary namespace（建立 cluster-scoped RBAC）
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/values/dr-prod.yaml \
+  --set telegraf.rbac.createClusterScopedResources=true
+
+# secondary namespace（不要重建 cluster-scoped RBAC）
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test2 --create-namespace \
+  -f k8s/helm/environments/values/dr-prod.yaml \
+  --set telegraf.rbac.createClusterScopedResources=false
+```
+
+### 多 namespace Ingress Host 自動化（免手改 YAML）
+
+為避免 `report host`、`grafana host`、`webapp host` 在多 namespace 互撞，建議使用根目錄腳本：
+
+`./deploy_perf_stack.sh`
+
+此腳本會以 Helm `--set-string` 自動覆寫以下值，不需手動修改任何 `k8s/helm/environments/values/*.yaml`：
+
+- `report-server.ingress.host`
+- `grafana.ingress.host`
+- `webapp.ingress.host`
+
+預設命名規則：
+
+- `jmeter-report-<namespace>.<base-domain>`
+- `jmeter-grafana-<namespace>.<base-domain>`
+- `jmeter-web-<namespace>.<base-domain>`
+
+範例：
+
+```bash
+# primary namespace（建立 telegraf cluster RBAC）
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --telegraf-cluster-rbac true
+
+# secondary namespace（不重建 telegraf cluster RBAC）
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --telegraf-cluster-rbac false
+```
+
+若你要指定既有網域命名，也可直接傳入明確 host：
+
+```bash
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env dr-prod \
+  --report-host jmeter-report-dr2.mgnt.mvdis.gov.tw \
+  --grafana-host jmeter-grafana-dr2.mgnt.mvdis.gov.tw \
+  --webapp-host jmeter-web-dr2.mgnt.mvdis.gov.tw \
+  --telegraf-cluster-rbac false
+```
+
 ## Webapp 持久化補充（Scenario / Data）
 
 為避免重建 image 或重新部署時覆蓋環境資料，webapp 另有兩個專用 PVC 掛載：
