@@ -76,6 +76,7 @@ _MAX_BATCH_REPORT_DOWNLOAD = 100
 _UPLOAD_OWNER_STORE = REPO_ROOT / "webapp" / "data" / "upload_owners.json"
 _PROJECT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _PROJECT_TEMPLATE_FILES = (".env", "jmeter-system.properties", "report-meta.env")
+_MODULE_DIR = SCENARIO_DIR / "module"
 
 
 def require_config_management(request: Request) -> dict:
@@ -198,15 +199,17 @@ def _parse_filter_dates(start_date: str, end_date: str) -> tuple[datetime | None
 
 def _read_upload_owner_store() -> dict:
     if not _UPLOAD_OWNER_STORE.exists():
-        return {"project_jmx": {}, "dataset": {}}
+        return {"project_jmx": {}, "dataset": {}, "module_jmx": {}}
     with _UPLOAD_OWNER_STORE.open("r", encoding="utf-8") as fp:
         data = json.load(fp)
     if not isinstance(data, dict):
-        return {"project_jmx": {}, "dataset": {}}
+        return {"project_jmx": {}, "dataset": {}, "module_jmx": {}}
     if not isinstance(data.get("project_jmx"), dict):
         data["project_jmx"] = {}
     if not isinstance(data.get("dataset"), dict):
         data["dataset"] = {}
+    if not isinstance(data.get("module_jmx"), dict):
+        data["module_jmx"] = {}
     return data
 
 
@@ -719,6 +722,80 @@ def download_project_jmx(project: str, name: str):
         raise HTTPException(404, "JMX file not found")
 
     return FileResponse(str(target), filename=name)
+
+
+@router.get("/modules/jmx", dependencies=[Depends(require_project_management)])
+def list_module_jmx(request: Request):
+    user = require_project_management(request)
+    owner_store = _read_upload_owner_store()
+    owner_section = owner_store.get("module_jmx", {})
+    current_user = _normalized_username(user)
+
+    files: list[dict[str, str | int | bool]] = []
+    if _MODULE_DIR.exists() and _MODULE_DIR.is_dir():
+        for path in sorted(_MODULE_DIR.glob("*.jmx")):
+            stat = path.stat()
+            owner_key = path.name.strip().lower()
+            owner_record = owner_section.get(owner_key) if isinstance(owner_section, dict) else None
+            owner_name = str((owner_record or {}).get("owner", "")).strip()
+            owner_updated_at = str((owner_record or {}).get("updated_at", "")).strip()
+            can_overwrite = can_manage_users(user) or (owner_name.strip().lower() == current_user)
+            files.append(
+                {
+                    "name": path.name,
+                    "size": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    "md5": _file_md5(path),
+                    "owner": owner_name,
+                    "owner_updated_at": owner_updated_at,
+                    "can_overwrite": can_overwrite,
+                }
+            )
+
+    return {"files": files}
+
+
+@router.get("/modules/download-jmx", dependencies=[Depends(require_project_management)])
+def download_module_jmx(name: str):
+    if not name.endswith(".jmx"):
+        raise HTTPException(400, "Only .jmx files are allowed")
+
+    target = ensure_subpath(_MODULE_DIR, _MODULE_DIR / name)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(404, "Module JMX file not found")
+
+    return FileResponse(str(target), filename=name)
+
+
+@router.post("/modules/upload", dependencies=[Depends(require_project_management)])
+async def upload_module_jmx(
+    request: Request,
+    file: UploadFile = File(...),
+    confirm_overwrite: bool = Form(False),
+):
+    user = require_project_management(request)
+
+    if not file.filename.endswith(".jmx"):
+        raise HTTPException(400, "Only .jmx files are allowed")
+
+    target = ensure_subpath(_MODULE_DIR, _MODULE_DIR / file.filename)
+    owner_key = file.filename.strip().lower()
+    owner_store = _read_upload_owner_store()
+    existing_owner = _owner_record(owner_store, "module_jmx", owner_key)
+    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    content = await file.read()
+    target.write_bytes(content)
+
+    _set_owner_record(owner_store, "module_jmx", owner_key, str(user.get("username", "")))
+    _write_upload_owner_store(owner_store)
+
+    return {
+        "ok": True,
+        "path": str(target.relative_to(REPO_ROOT)),
+        "modified_at": _path_modified_text(target),
+    }
 
 
 @router.post("/datasets/upload", dependencies=[Depends(require_project_management)])

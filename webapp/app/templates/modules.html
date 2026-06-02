@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header">管理模組（scenario/module）</div>
+  <div class="card-body">
+    <form id="module-upload-form" class="row g-2" enctype="multipart/form-data">
+      <div class="col-md-6">
+        <label class="form-label mb-1">JMX Fragment 檔案</label>
+        <input id="module-upload-file" class="form-control" type="file" name="file" accept=".jmx" required>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="confirm_overwrite" id="confirm-overwrite-module" value="true">
+          <label class="form-check-label" for="confirm-overwrite-module">同檔名時確認覆蓋</label>
+        </div>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button id="module-upload-btn" class="btn btn-primary w-100">上傳模組</button>
+      </div>
+      <div class="col-12">
+        <span id="module-upload-state" class="badge text-bg-secondary">尚未上傳</span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Module JMX 清單</span>
+    <button id="module-refresh-btn" class="btn btn-sm btn-outline-primary">重新整理</button>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead>
+          <tr>
+            <th>檔名</th>
+            <th>大小</th>
+            <th>最後修改</th>
+            <th>上傳者</th>
+            <th>上傳者更新時間</th>
+            <th>MD5</th>
+            <th>下載</th>
+          </tr>
+        </thead>
+        <tbody id="module-table-body">
+          <tr><td colspan="7" class="text-muted text-center">讀取中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const uploadForm = document.getElementById("module-upload-form");
+    const uploadFile = document.getElementById("module-upload-file");
+    const uploadBtn = document.getElementById("module-upload-btn");
+    const uploadState = document.getElementById("module-upload-state");
+    const tableBody = document.getElementById("module-table-body");
+    const refreshBtn = document.getElementById("module-refresh-btn");
+
+    const nowTimeText = () => new Date().toLocaleString("zh-TW", { hour12: false });
+    const escapeHtml = (text) => String(text || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+
+    const setUploadState = (className, text) => {
+      uploadState.className = `badge ${className}`;
+      uploadState.textContent = text;
+    };
+
+    const formatSize = (bytes) => {
+      if (bytes < 1024) return `${bytes} B`;
+      const kb = bytes / 1024;
+      if (kb < 1024) return `${kb.toFixed(1)} KB`;
+      const mb = kb / 1024;
+      return `${mb.toFixed(2)} MB`;
+    };
+
+    async function refreshList() {
+      tableBody.innerHTML = '<tr><td colspan="7" class="text-muted text-center">讀取中...</td></tr>';
+      try {
+        const response = await fetch('/api/modules/jmx');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const files = Array.isArray(data.files) ? data.files : [];
+
+        if (!files.length) {
+          tableBody.innerHTML = '<tr><td colspan="7" class="text-muted text-center">尚無 module JMX 檔案</td></tr>';
+          return;
+        }
+
+        const rows = files.map((f) => {
+          const nameText = escapeHtml(f.name || '-');
+          const ownerText = escapeHtml(f.owner || '-');
+          const ownerAtText = escapeHtml(f.owner_updated_at || '-');
+          const modifiedText = escapeHtml(f.modified_at || '-');
+          const md5Text = escapeHtml(f.md5 || '-');
+          return `
+            <tr>
+              <td>${nameText}</td>
+              <td>${formatSize(Number(f.size || 0))}</td>
+              <td>${modifiedText}</td>
+              <td>${ownerText}</td>
+              <td>${ownerAtText}</td>
+              <td class="font-monospace">${md5Text}</td>
+              <td><a class="btn btn-sm btn-outline-primary" href="/api/modules/download-jmx?name=${encodeURIComponent(f.name || '')}">下載</a></td>
+            </tr>
+          `;
+        });
+        tableBody.innerHTML = rows.join('');
+      } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">讀取失敗：${error.message}</td></tr>`;
+      }
+    }
+
+    uploadForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      if (!uploadFile?.files?.length) {
+        setUploadState('text-bg-warning', '請先選擇 .jmx 檔案');
+        return;
+      }
+
+      const formData = new FormData(uploadForm);
+      if (!formData.get('confirm_overwrite')) {
+        formData.set('confirm_overwrite', 'false');
+      }
+
+      uploadBtn.disabled = true;
+      setUploadState('text-bg-warning', '上傳中...');
+
+      try {
+        const response = await fetch('/api/modules/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const payload = await response.json();
+            detail = payload.detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+
+        setUploadState('text-bg-success', `上傳成功 ${nowTimeText()}`);
+        uploadForm.reset();
+        await refreshList();
+      } catch (error) {
+        setUploadState('text-bg-danger', `上傳失敗：${error.message}`);
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+
+    refreshBtn?.addEventListener('click', async () => {
+      await refreshList();
+    });
+
+    refreshList();
+  })();
+</script>
+{% endblock %}

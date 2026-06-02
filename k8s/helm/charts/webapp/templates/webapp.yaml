@@ -47,6 +47,10 @@ spec:
               value: {{ .Values.timezone | default "UTC" | quote }}
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: DEFAULT_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
 {{- range $name, $value := .Values.extraEnv }}
             - name: {{ $name }}
               value: {{ $value | quote }}

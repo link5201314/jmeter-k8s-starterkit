@@ -27,3 +27,5 @@ REPORT_DIR = REPO_ROOT / "report"
 CONFIG_DIR = REPO_ROOT / "config"
 HELM_ENV_VALUES_DIR = REPO_ROOT / "k8s" / "helm" / "environments" / "values"
 HELM_ENV_LEGACY_DIR = REPO_ROOT / "k8s" / "helm" / "environments"
+
+DEFAULT_NAMESPACE = os.getenv("DEFAULT_NAMESPACE", "performance-test")

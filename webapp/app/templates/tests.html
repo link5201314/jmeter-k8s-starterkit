@@ -16,7 +16,7 @@
       </div>
       <div class="col-md-4">
         <label class="form-label">Namespace</label>
-        <input class="form-control" name="namespace" value="performance-test">
+        <input class="form-control" name="namespace" value="{{ default_namespace }}" readonly>
       </div>
       <div class="col-md-4"></div>
       <div class="col-md-3">
@@ -54,7 +54,7 @@
     <form method="post" action="/api/tests/stop" class="row g-3">
       <div class="col-md-4">
         <label class="form-label">Namespace</label>
-        <input class="form-control" name="namespace" value="performance-test">
+        <input class="form-control" name="namespace" value="{{ default_namespace }}" readonly>
       </div>
       <div class="col-md-4">
         <label class="form-label">Helm Release</label>
@@ -78,7 +78,7 @@
     <form id="runtime-status-form" class="row g-2 mb-3">
       <div class="col-md-4">
         <label class="form-label">Namespace</label>
-        <input id="runtime-namespace" class="form-control" value="performance-test">
+        <input id="runtime-namespace" class="form-control" value="{{ default_namespace }}" readonly>
       </div>
       <div class="col-md-3 d-flex align-items-end">
         <button type="submit" class="btn btn-outline-primary w-100">立即更新</button>

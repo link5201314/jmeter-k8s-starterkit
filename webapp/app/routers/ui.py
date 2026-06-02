@@ -12,6 +12,7 @@ from pathlib import Path
 
 from webapp.app.core.config import (
     CONFIG_DIR,
+    DEFAULT_NAMESPACE,
     HELM_ENV_VALUES_DIR,
     HELM_ENV_LEGACY_DIR,
     REPORT_DIR,
@@ -276,7 +277,7 @@ def tests_page(request: Request):
         if env_dir.exists()
         else []
     )
-    return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects, "helm_envs": helm_envs}))
+    return templates.TemplateResponse("tests.html", _template_context(request, {"projects": projects, "helm_envs": helm_envs, "default_namespace": DEFAULT_NAMESPACE}))
 
 
 @router.get("/db-restore")
@@ -391,6 +392,18 @@ def datasets_page(request: Request, file: Optional[str] = None, project: Optiona
     )
 
 
+@router.get("/modules")
+def modules_page(request: Request):
+    user = _project_manage_required(request)
+    if isinstance(user, Response):
+        return user
+
+    return templates.TemplateResponse(
+        "modules.html",
+        _template_context(request),
+    )
+
+
 @router.get("/reports")
 def reports_page(
     request: Request,
@@ -453,6 +466,7 @@ def logs_page(request: Request):
                 "ignored_jmeter_warn_patterns": _env_list("WEBAPP_IGNORED_JMETER_WARN_PATTERNS"),
                 "ignored_jmeter_info_patterns": _env_list("WEBAPP_IGNORED_JMETER_INFO_PATTERNS"),
                 "ignored_jmeter_error_patterns": _env_list("WEBAPP_IGNORED_JMETER_ERROR_PATTERNS"),
+                "default_namespace": DEFAULT_NAMESPACE,
             },
         ),
     )
