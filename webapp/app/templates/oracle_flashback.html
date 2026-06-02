@@ -18,8 +18,9 @@
         <input class="form-control" name="pdb_name" id="pdb-name" placeholder="CDBC1" required>
       </div>
       <div class="col-md-4">
-        <div class="d-grid">
+        <div class="d-grid gap-2">
           <button type="button" class="btn btn-info" id="query-rp-btn">查詢還原點</button>
+          <button type="button" class="btn btn-secondary" id="check-process-btn">查詢還原進度</button>
         </div>
       </div>
     </form>
@@ -269,6 +270,11 @@
 
     // Button handlers
     document.getElementById("query-rp-btn").addEventListener("click", queryRestorePoints);
+
+    document.getElementById("check-process-btn").addEventListener("click", async () => {
+      if (!validateBaseInputs()) return;
+      await executeOperation("/api/oracle-flashback/check-process", buildBaseFormData());
+    });
 
     document.getElementById("create-rp-btn").addEventListener("click", async () => {
       if (!validateCreateInputs()) return;
