@@ -37,7 +37,7 @@ rp_name=`echo ${rpn} |tr '[a-z]' '[A-Z]'`
 sqlplus -s "/ as sysdba" << EOF
 set feedback off;
 set heading off;
-CREATE RESTORE POINT ${rp_name} FOR PLUGGABLE DATABASE ${pdb};
+CREATE RESTORE POINT ${rp_name} FOR PLUGGABLE DATABASE ${pdb} GUARANTEE FLASHBACK DATABASE;
 exit;
 EOF
 
