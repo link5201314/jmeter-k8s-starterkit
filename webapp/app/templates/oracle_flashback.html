@@ -89,6 +89,48 @@
     const restorePointList = document.getElementById("restore-point-list");
     const restorePointEmpty = document.getElementById("restore-point-empty");
     const createRestorePointInput = document.getElementById("create-restore-point");
+    const MAX_HISTORY_ENTRIES = 50;
+    const historyStore = {
+      output: [],
+      error: [],
+      status: [],
+    };
+
+    const nowLabel = () => {
+      return new Date().toLocaleString("zh-TW", { hour12: false });
+    };
+
+    const renderHistory = (entries) => {
+      if (!entries.length) return "# 尚未執行任何操作";
+      return entries.join("\n\n------------------------------------------------------------\n\n");
+    };
+
+    const appendHistory = (type, actionLabel, message, focusTab = false) => {
+      const contentMap = {
+        output: outputContent,
+        error: errorContent,
+        status: statusContent,
+      };
+      const tabMap = {
+        output: "output-tab",
+        error: "error-tab",
+        status: "status-tab",
+      };
+
+      const { env, pdbName } = getBaseValues();
+      const envLabel = env || "(未指定)";
+      const pdbLabel = pdbName || "(未指定)";
+      const entry = `[${nowLabel()}] ${actionLabel} | ENV=${envLabel} | PDB=${pdbLabel}\n${message || "(無內容)"}`;
+      historyStore[type].unshift(entry);
+      if (historyStore[type].length > MAX_HISTORY_ENTRIES) {
+        historyStore[type].pop();
+      }
+
+      contentMap[type].textContent = renderHistory(historyStore[type]);
+      if (focusTab) {
+        document.getElementById(tabMap[type]).click();
+      }
+    };
 
     const toParams = (formData) => {
       const params = new URLSearchParams();
@@ -98,19 +140,16 @@
       return params;
     };
 
-    const showStatus = (message) => {
-      statusContent.textContent = message;
-      document.getElementById("status-tab").click();
+    const showStatus = (actionLabel, message, focusTab = false) => {
+      appendHistory("status", actionLabel, message, focusTab);
     };
 
-    const showError = (message) => {
-      errorContent.textContent = message;
-      document.getElementById("error-tab").click();
+    const showError = (actionLabel, message, focusTab = true) => {
+      appendHistory("error", actionLabel, message, focusTab);
     };
 
-    const showOutput = (message) => {
-      outputContent.textContent = message;
-      document.getElementById("output-tab").click();
+    const showOutput = (actionLabel, message, focusTab = true) => {
+      appendHistory("output", actionLabel, message, focusTab);
     };
 
     const getBaseValues = () => {
@@ -159,9 +198,13 @@
           }
           const fd = buildBaseFormData();
           fd.set("restore_point", rp);
-          const payload = await executeOperation("/api/oracle-flashback/restore-rp", fd);
+          const payload = await executeOperation(
+            "/api/oracle-flashback/restore-rp",
+            fd,
+            `執行還原 (${rp})`
+          );
           if (payload && payload.ok) {
-            await queryRestorePoints();
+            await queryRestorePoints("自動重新查詢還原點（還原後）", false);
           }
         });
 
@@ -175,9 +218,13 @@
           }
           const fd = buildBaseFormData();
           fd.set("restore_point", rp);
-          const payload = await executeOperation("/api/oracle-flashback/delete-rp", fd);
+          const payload = await executeOperation(
+            "/api/oracle-flashback/delete-rp",
+            fd,
+            `刪除還原點 (${rp})`
+          );
           if (payload && payload.ok) {
-            await queryRestorePoints();
+            await queryRestorePoints("自動重新查詢還原點（刪除後）", false);
           }
         });
 
@@ -189,9 +236,9 @@
       }
     };
 
-    async function executeOperation(apiEndpoint, formData) {
+    async function executeOperation(apiEndpoint, formData, actionLabel, focusTab = true) {
       try {
-        showStatus("執行中...");
+        showStatus(actionLabel, "執行中...", focusTab);
         
         const response = await fetch(apiEndpoint, {
           method: "POST",
@@ -204,16 +251,17 @@
         const payload = await response.json();
         
         if (!response.ok) {
-          showError(payload.detail || `HTTP ${response.status}`);
+          showError(actionLabel, payload.detail || `HTTP ${response.status}`, true);
           return null;
         }
 
-        showOutput(payload.output || "");
+        showOutput(actionLabel, payload.output || "(無輸出)", focusTab);
         if (payload.error) {
-          showError(payload.error);
+          showError(actionLabel, payload.error, true);
         }
         
         let statusMsg = `執行完成\n`;
+        statusMsg += `動作: ${actionLabel}\n`;
         statusMsg += `成功: ${payload.ok ? "是" : "否"}\n`;
         statusMsg += `終止碼: ${payload.exit_code}\n`;
         if (payload.restore_points) {
@@ -222,10 +270,10 @@
         if (payload.in_progress !== undefined) {
           statusMsg += `還原進行中: ${payload.in_progress ? "是" : "否"}\n`;
         }
-        showStatus(statusMsg);
+        showStatus(actionLabel, statusMsg, focusTab);
         return payload;
       } catch (error) {
-        showError(`錯誤: ${error.message}`);
+        showError(actionLabel, `錯誤: ${error.message}`, true);
         return null;
       }
     }
@@ -234,11 +282,11 @@
       const { env, pdbName } = getBaseValues();
 
       if (!env) {
-        showError("請選擇環境");
+        showError("輸入驗證", "請選擇環境", true);
         return false;
       }
       if (!pdbName) {
-        showError("請輸入 PDB 名稱");
+        showError("輸入驗證", "請輸入 PDB 名稱", true);
         return false;
       }
 
@@ -252,17 +300,22 @@
 
       const restorePoint = createRestorePointInput.value.trim();
       if (!restorePoint) {
-        showError("請輸入還原點名稱");
+        showError("輸入驗證", "請輸入還原點名稱", true);
         return false;
       }
 
       return true;
     };
 
-    const queryRestorePoints = async () => {
+    const queryRestorePoints = async (actionLabel = "查詢還原點", focusTab = true) => {
       if (!validateBaseInputs()) return;
 
-      const payload = await executeOperation("/api/oracle-flashback/list-rp", buildBaseFormData());
+      const payload = await executeOperation(
+        "/api/oracle-flashback/list-rp",
+        buildBaseFormData(),
+        actionLabel,
+        focusTab
+      );
       if (payload && payload.ok) {
         renderRestorePoints(payload.restore_points || []);
       }
@@ -273,7 +326,11 @@
 
     document.getElementById("check-process-btn").addEventListener("click", async () => {
       if (!validateBaseInputs()) return;
-      await executeOperation("/api/oracle-flashback/check-process", buildBaseFormData());
+      await executeOperation(
+        "/api/oracle-flashback/check-process",
+        buildBaseFormData(),
+        "查詢還原進度"
+      );
     });
 
     document.getElementById("create-rp-btn").addEventListener("click", async () => {
@@ -281,9 +338,14 @@
 
       const fd = buildBaseFormData();
       fd.set("restore_point", createRestorePointInput.value.trim());
-      const payload = await executeOperation("/api/oracle-flashback/create-rp", fd);
+      const restorePoint = createRestorePointInput.value.trim();
+      const payload = await executeOperation(
+        "/api/oracle-flashback/create-rp",
+        fd,
+        `建立還原點 (${restorePoint})`
+      );
       if (payload && payload.ok) {
-        await queryRestorePoints();
+        await queryRestorePoints("自動重新查詢還原點（建立後）", false);
       }
     });
   })();
