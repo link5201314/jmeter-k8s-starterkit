@@ -5,8 +5,8 @@ global:
   master:
     enabled: true
     image:
-      repository: rbillon59/jmeter-k8s-base
-      tag: "5.6.3"
+      repository: docker.io/isaac0815/jmeter-k8s-base
+      tag: "5.6.3-ctg-1"
       digest: ""
       pullPolicy: IfNotPresent
     resources:
@@ -20,8 +20,8 @@ global:
   slave:
     enabled: true
     image:
-      repository: rbillon59/jmeter-k8s-base
-      tag: "5.6.3"
+      repository: docker.io/isaac0815/jmeter-k8s-base
+      tag: "5.6.3-ctg-1"
       digest: ""
       pullPolicy: IfNotPresent
     resources:

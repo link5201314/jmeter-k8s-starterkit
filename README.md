@@ -13,6 +13,73 @@ You will find inside it the necessary to organize and run your performance scena
 
 Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the inspiration !
 
+## JMeter Concurrency Thread Group Plugin（CTG）
+
+若要穩定使用 Concurrency Thread Group，建議改為「自製 JMeter image 並於 build 時安裝 plugin」，避免每次測試啟動時才連外下載 plugin（容易受 DNS/網路限制影響）。
+
+本專案已提供：
+
+- Dockerfile：`docker/jmeter-ctg/Dockerfile`
+- build/push 腳本：`docker/jmeter-ctg/build_and_push.sh`
+
+### 1) 建置與推送 image
+
+範例（請改成你自己的 registry/repo）：
+
+```bash
+chmod +x docker/jmeter-ctg/build_and_push.sh
+./docker/jmeter-ctg/build_and_push.sh docker.io/isaac0815/jmeter-k8s-base 5.6.3-ctg-1
+```
+
+若尚未登入 Docker Hub，先執行：`podman login docker.io`
+
+### 2) 更新 Helm values（master/slave 要一致）
+
+目前已在以下檔案預設為 CTG image：
+
+- `k8s/helm/charts/jmeter/values.yaml`
+
+若你的環境 values 設定了 `global.imageRegistry`（例如內網 Harbor），請留意：
+
+- 要直接拉 Docker Hub image（`docker.io/isaac0815/...`）時，`global.imageRegistry` 需為空字串。
+- 或者改成先把 image 同步到你的私有 registry，再填私有 repo 路徑。
+
+若你使用其他環境 values（例如 lab），也請同步覆蓋：
+
+```yaml
+global:
+  master:
+    image:
+      repository: <your-jmeter-image-repo>
+      tag: "5.6.3-ctg-1"
+  slave:
+    image:
+      repository: <your-jmeter-image-repo>
+      tag: "5.6.3-ctg-1"
+```
+
+### 3) 重新部署
+
+```bash
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/values/dr-prod.yaml
+```
+
+如果是啟動測試 runtime（`start_test.sh`），請確保其使用的 `--helm-env` 對應 values 也已改成你的 CTG image。
+
+### 4) 驗證 plugin 是否可用
+
+可在 master pod 檢查 plugin jar：
+
+```bash
+kubectl -n performance-test exec -it <jmeter-master-pod> -- \
+  ls -1 /opt/jmeter/apache-jmeter/lib/ext | grep -E 'casutg|cmn-jmeter|plugins-manager'
+```
+
+若有看到 `jmeter-plugins-casutg-*.jar`，代表 Concurrency Thread Group plugin 已在 image 中。
+
 ## 客製版重點（Helm 管理模式）
 
 此客製版已將原本以 `kubectl create -R -f k8s/` 為主的部署方式，改為以 Helm 為主的管理模式。
