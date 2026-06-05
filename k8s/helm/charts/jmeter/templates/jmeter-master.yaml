@@ -80,6 +80,18 @@ spec:
         - name: {{ . }}
 {{- end }}
 {{- end }}
+    {{- if .Values.global.master.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.global.master.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.global.master.affinity }}
+      affinity:
+{{ toYaml .Values.global.master.affinity | indent 8 }}
+    {{- end }}
+    {{- if .Values.global.master.tolerations }}
+      tolerations:
+{{ toYaml .Values.global.master.tolerations | indent 8 }}
+    {{- end }}
       securityContext:
         runAsUser: 1000
         fsGroup: 1000

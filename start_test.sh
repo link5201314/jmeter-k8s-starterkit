@@ -246,6 +246,9 @@ helm_env_file="${PWD}/k8s/helm/environments/values/${helm_env}.yaml"
 if [ ! -f "${helm_env_file}" ]; then
     helm_env_file="${PWD}/k8s/helm/environments/${helm_env}.yaml"
 fi
+runtime_node_selector_values="${PWD}/k8s/helm/environments/runtime-overrides/${helm_env}.${namespace}.yaml"
+runtime_node_selector_cm_name="jmeter-runtime-node-selector-override"
+runtime_node_selector_values_tmp=""
 project_deploy_values="scenario/${jmx_dir}/deploy.values.yaml"
 jmeter_env_file=""
 
@@ -348,6 +351,21 @@ if [ -f "${project_deploy_values}" ]; then
     helm_cmd+=( -f "${project_deploy_values}" )
 fi
 
+if [ -f "${runtime_node_selector_values}" ]; then
+    logit "INFO" "Using runtime node selector override: ${runtime_node_selector_values}"
+    helm_cmd+=( -f "${runtime_node_selector_values}" )
+else
+    runtime_cm_payload=""
+    if runtime_cm_payload=$(kubectl -n "${namespace}" get configmap "${runtime_node_selector_cm_name}" -o jsonpath='{.data.override\.yaml}' 2>/dev/null); then
+        if [ -n "${runtime_cm_payload}" ]; then
+            runtime_node_selector_values_tmp="$(mktemp)"
+            printf '%s\n' "${runtime_cm_payload}" > "${runtime_node_selector_values_tmp}"
+            logit "INFO" "Using runtime node selector override from ConfigMap: ${runtime_node_selector_cm_name}"
+            helm_cmd+=( -f "${runtime_node_selector_values_tmp}" )
+        fi
+    fi
+fi
+
 helm_cmd+=( -f "${run_values_file}" )
 
 logit "INFO" "Helm command: prepare!"
@@ -356,10 +374,16 @@ logit "INFO" "Deploying jmeter resources via helm release=${helm_release}"
 logit "INFO" "Helm command: ${helm_cmd[@]}"
 if ! "${helm_cmd[@]}"; then
     logit "ERROR" "Helm deploy failed for release=${helm_release}, aborting test startup"
+    if [ -n "${runtime_node_selector_values_tmp}" ] && [ -f "${runtime_node_selector_values_tmp}" ]; then
+        rm -f "${runtime_node_selector_values_tmp}"
+    fi
     rm -f "${run_values_file}"
     exit 1
 fi
 rm -f "${run_values_file}"
+if [ -n "${runtime_node_selector_values_tmp}" ] && [ -f "${runtime_node_selector_values_tmp}" ]; then
+    rm -f "${runtime_node_selector_values_tmp}"
+fi
 
 logit "INFO" "Waiting for pods to be ready"
 end=${target_injectors}

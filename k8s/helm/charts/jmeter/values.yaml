@@ -16,6 +16,9 @@ global:
       limits:
         memory: "2048Mi"
         cpu: "1000m"
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
 
   slave:
     enabled: true
@@ -31,6 +34,9 @@ global:
       limits:
         memory: "768Mi"
         cpu: "1000m"
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
   pvc:
     enabled: true
     storageClassName: nfs-csi

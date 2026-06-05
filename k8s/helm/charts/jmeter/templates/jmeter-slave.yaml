@@ -82,6 +82,18 @@ spec:
         - name: {{ . }}
 {{- end }}
 {{- end }}
+    {{- if .Values.global.slave.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.global.slave.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.global.slave.affinity }}
+      affinity:
+{{ toYaml .Values.global.slave.affinity | indent 8 }}
+    {{- end }}
+    {{- if .Values.global.slave.tolerations }}
+      tolerations:
+{{ toYaml .Values.global.slave.tolerations | indent 8 }}
+    {{- end }}
       containers:
       - name: jmslave
         image: "{{- if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{- end }}{{ .Values.global.slave.image.repository }}{{- if .Values.global.slave.image.digest }}@{{ .Values.global.slave.image.digest }}{{- else }}:{{ .Values.global.slave.image.tag }}{{- end }}"

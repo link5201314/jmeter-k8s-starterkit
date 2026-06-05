@@ -171,6 +171,23 @@ helm upgrade --install perf-stack k8s/helm \
 - `report-server.ingress.host`
 - `grafana.ingress.host`
 - `webapp.ingress.host`
+- `global.master.nodeSelector.*`（可選）
+- `global.slave.nodeSelector.*`（可選）
+
+另外，若你希望部署時就固定 jmeter master/slave 的節點池，可加上：
+
+- `--master-node-label <key=value>`（可重複）
+- `--slave-node-label <key=value>`（可重複）
+
+注意：
+
+- 參數格式必須是 `key=value`。
+- 沒有填時為預設行為：不限制 nodeSelector（可排程到所有可用 workload node）。
+- 腳本會同步產生 `k8s/helm/environments/runtime-overrides/<helm-env>.<namespace>.yaml`，供 `start_test.sh` 自動載入。
+- 腳本也會同步寫入 namespace 內的 ConfigMap：`jmeter-runtime-node-selector-override`（key: `override.yaml`）。
+
+也就是說，當你先用 `deploy_perf_stack.sh` 設定了 master/slave label 後，後續同 namespace + 同 helm-env 的 `start_test.sh` 會自動沿用相同 nodeSelector 行為，不需要再手動 `--set`。
+若 `start_test.sh` 執行環境（例如 jmeter-webapp 容器）讀不到本地 `runtime-overrides` 檔案，會自動 fallback 讀取上述 ConfigMap。
 
 預設命名規則：
 
@@ -194,6 +211,24 @@ helm upgrade --install perf-stack k8s/helm \
   --helm-env dr-prod \
   --base-domain mgnt.mvdis.gov.tw \
   --telegraf-cluster-rbac false
+
+# 指定 master/slave 分別部署到不同 label 節點
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --master-node-label pt-group=group-1-m \
+  --slave-node-label pt-group=group-1
+
+# 可重複傳入多組 label（同一個 nodeSelector map）
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --master-node-label role=jmeter \
+  --master-node-label tier=perf \
+  --slave-node-label role=jmeter \
+  --slave-node-label tier=perf
 ```
 
 若你要指定既有網域命名，也可直接傳入明確 host：
