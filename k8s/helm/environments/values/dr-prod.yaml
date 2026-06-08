@@ -51,7 +51,7 @@ report-server:
     tag: "1.25"
   ingress:
     host: jmeter-report-dr.mgnt.mvdis.gov.tw
-    ingressClassName: nginx
+    ingressClassName: kommander-traefik
 
 telegraf:
   image:
@@ -69,7 +69,7 @@ grafana:
     tag: "7.3.3"
   ingress:
     host: jmeter-grafana-dr.mgnt.mvdis.gov.tw
-    ingressClassName: nginx
+    ingressClassName: kommander-traefik
 
 webapp:
   enabled: true
@@ -80,7 +80,7 @@ webapp:
     useGlobalRegistry: true
   ingress:
     host: jmeter-web-dr.mgnt.mvdis.gov.tw
-    ingressClassName: nginx
+    ingressClassName: kommander-traefik
   scenarioPvc:
     enabled: true
     existingClaim: ""
