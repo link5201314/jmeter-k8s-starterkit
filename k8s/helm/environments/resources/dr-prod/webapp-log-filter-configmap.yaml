@@ -8,6 +8,7 @@ data:
   WEBAPP_IGNORED_JMETER_INFO_PATTERNS: |
     DataStrippingSampleSender: Using DataStrippingSampleSender for this run with stripAlsoOnError: true
     StandardJMeterEngine: Thread will continue on error
+    StandardJMeterEngine: Thread will start next loop on error
   WEBAPP_IGNORED_JMETER_ERROR_PATTERNS: |
     Please check the standard output of the target process for a detailed error message.
     Failed to perform cmdline operation: jmeter-plugins.org: Temporary failure in name resolution
