@@ -245,6 +245,17 @@ helm upgrade --install perf-stack k8s/helm \
   --grafana-host jmeter-grafana-dr2.mgnt.mvdis.gov.tw \
   --webapp-host jmeter-web-dr2.mgnt.mvdis.gov.tw \
   --telegraf-cluster-rbac false
+
+# dr環境完整範例(視情況決定telegraf-cluster-rbac)
+./deploy_perf_stack.sh \
+  -n performance-test1 \
+  --helm-env dr-prod \
+  --report-host jmeter-report1-dr.mgnt.mvdis.gov.tw \
+  --grafana-host jmeter-grafana1-dr.mgnt.mvdis.gov.tw \
+  --webapp-host jmeter-web1-dr.mgnt.mvdis.gov.tw \
+  --master-node-label pt-group=group-1-m \
+  --slave-node-label pt-group=group-1 \
+  --telegraf-cluster-rbac false
 ```
 
 ## Webapp 持久化補充（Scenario / Data）
@@ -941,6 +952,44 @@ helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespac
 # 停測並清掉 jmeter-runtime
 ./stop_test.sh -n performance-test -u --helm-release jmeter-runtime
 ```
+
+### 只更新 Webapp Image（保留其他既有值）
+
+若你只想更新 `webapp` image，不想改動既有 ingress、PVC、RBAC 或其他 chart values，建議使用：
+
+```bash
+helm upgrade perf-stack k8s/helm -n <namespace> --reuse-values \
+  --set-string webapp.image.repository=<repo> \
+  --set-string webapp.image.tag=<tag>
+```
+
+Lab（例）：
+
+```bash
+IMAGE_TAG=2026.06.08-135344-flashback-nsfix2
+for ns in performance-test performance-test2; do
+  helm upgrade perf-stack k8s/helm -n "$ns" --reuse-values \
+    --set-string webapp.image.repository=docker.io/isaac0815/jmeter-webapp \
+    --set-string webapp.image.tag="${IMAGE_TAG}" \
+    --set webapp.image.useGlobalRegistry=false
+  kubectl -n "$ns" rollout status deploy/jmeter-webapp --timeout=300s
+done
+```
+
+DR-Prod（例）：
+
+```bash
+IMAGE_TAG=2026.06.08-135344-flashback-nsfix2
+for ns in performance-test1 performance-test2 performance-test3; do
+  helm upgrade perf-stack k8s/helm -n "$ns" --reuse-values \
+    --set-string webapp.image.repository=qa_team/jmeter-k8s-webapp \
+    --set-string webapp.image.tag="${IMAGE_TAG}" \
+    --set webapp.image.useGlobalRegistry=true
+  kubectl -n "$ns" rollout status deploy/jmeter-webapp --timeout=300s
+done
+```
+
+> `--reuse-values` 會沿用目前 release 已生效設定，只覆蓋本次 `--set` 的欄位。
 
 若 DR 環境中的 InfluxDB PVC 空間不足，可先臨時擴容，再執行 `helm upgrade` 套用固定值：
 

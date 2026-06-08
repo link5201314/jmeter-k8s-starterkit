@@ -75,7 +75,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.06.05-cm-fallback"
+    tag: "2026.06.08-135344-flashback-nsfix2"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import os
 import re
 import subprocess
 import zipfile
@@ -923,8 +924,8 @@ def download_report_batch_zip(
 
 def _get_ssh_config_from_secret(env: str) -> dict:
     """Load SSH config from K8s secret"""
-    secret_name = "oracle-flashback-ssh"
-    namespace = "performance-test"
+    secret_name = os.getenv("ORACLE_FLASHBACK_SECRET_NAME", "oracle-flashback-ssh")
+    namespace = os.getenv("ORACLE_FLASHBACK_SECRET_NAMESPACE") or os.getenv("DEFAULT_NAMESPACE", "performance-test")
     
     cmd = [
         "kubectl",
@@ -940,7 +941,10 @@ def _get_ssh_config_from_secret(env: str) -> dict:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=10)
         if proc.returncode != 0:
-            raise HTTPException(500, f"Failed to load SSH secret: {proc.stderr}")
+            raise HTTPException(
+                500,
+                f"Failed to load SSH secret (name={secret_name}, namespace={namespace}): {proc.stderr}",
+            )
         
         # kubectl returns base64 encoded values in JSON
         import base64
