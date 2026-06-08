@@ -322,6 +322,41 @@ kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/we
 kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
 ```
 
+### Image Pull Secret（bmcharbor-auth）
+
+`dr-prod` values 會使用：
+
+- `global.imagePullSecrets: [bmcharbor-auth]`
+
+若 namespace 尚未建立此 secret，`jmeter-master`/`jmeter-slave` 會出現 `FailedToRetrieveImagePullSecret` 或 `ImagePullBackOff`。
+
+專案已提供範本（不含真實憑證）：
+
+- `k8s/helm/environments/resources/dr-prod/image-pull-secret.yaml`
+- `k8s/helm/environments/resources/lab/image-pull-secret.yaml`
+
+建議做法：
+
+1. 直接編輯 `.dockerconfigjson` 內的 `username` / `password` / `auth`
+2. `auth` 請填 `echo -n 'username:password' | base64 -w0` 的結果
+3. 套用到目標 namespace（dr-prod 建議不要提交真實憑證）
+
+```bash
+kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/image-pull-secret.yaml
+```
+
+若你希望部署時順便自動套用該環境 `resources` 目錄，可使用：
+
+```bash
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --apply-env-resources
+```
+
+`--apply-env-resources` 會在 Helm 前自動套用 `k8s/helm/environments/resources/<helm-env>/*.yaml`。
+
 再執行 Helm：
 
 ```bash

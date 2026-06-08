@@ -19,6 +19,7 @@ Host options (choose one strategy):
 Optional:
   -r, --release <name>              Helm release name (default: perf-stack)
   --chart <path>                    Helm chart path (default: k8s/helm)
+  --apply-env-resources             Apply k8s/helm/environments/resources/<helm-env>/*.yaml before Helm
   --report-prefix <prefix>          Auto host prefix (default: jmeter-report)
   --grafana-prefix <prefix>         Auto host prefix (default: jmeter-grafana)
   --webapp-prefix <prefix>          Auto host prefix (default: jmeter-web)
@@ -67,6 +68,7 @@ telegraf_cluster_rbac="false"
 skip_dependency_build=0
 create_namespace=1
 dry_run=0
+apply_env_resources=0
 skip_telegraf_rbac_subject_sync=0
 master_node_labels=()
 slave_node_labels=()
@@ -204,6 +206,8 @@ while [[ $# -gt 0 ]]; do
       slave_node_labels+=("$2"); shift 2 ;;
     --skip-dependency-build)
       skip_dependency_build=1; shift ;;
+    --apply-env-resources)
+      apply_env_resources=1; shift ;;
     --no-create-namespace)
       create_namespace=0; shift ;;
     --dry-run)
@@ -292,6 +296,7 @@ echo "[INFO] report host : ${report_host}"
 echo "[INFO] grafana host: ${grafana_host}"
 echo "[INFO] webapp host : ${webapp_host}"
 echo "[INFO] telegraf cluster RBAC create=${telegraf_cluster_rbac}"
+echo "[INFO] apply env resources      : ${apply_env_resources}"
 echo "[INFO] telegraf RBAC subject sync skip=${skip_telegraf_rbac_subject_sync}"
 if [[ ${#master_node_labels[@]} -gt 0 ]]; then
   echo "[INFO] jmeter-master node labels: ${master_node_labels[*]}"
@@ -304,6 +309,26 @@ else
   echo "[INFO] jmeter-slave node labels : unrestricted"
 fi
 echo "[INFO] runtime override file     : ${runtime_override_file}"
+
+if [[ "${apply_env_resources}" -eq 1 ]]; then
+  env_resource_dir="${repo_root}/k8s/helm/environments/resources/${helm_env}"
+  if [[ ! -d "${env_resource_dir}" ]]; then
+    echo "[WARN] env resource dir not found: ${env_resource_dir}"
+  elif [[ "${dry_run}" -eq 1 ]]; then
+    echo "[INFO] dry-run mode: skip apply env resources from ${env_resource_dir}"
+  else
+    mapfile -t env_resource_files < <(find "${env_resource_dir}" -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) | sort)
+    if [[ ${#env_resource_files[@]} -eq 0 ]]; then
+      echo "[INFO] no env resources to apply in ${env_resource_dir}"
+    else
+      echo "[INFO] applying env resources (${#env_resource_files[@]}) from ${env_resource_dir}"
+      for f in "${env_resource_files[@]}"; do
+        echo "[INFO] kubectl -n ${namespace} apply -f ${f}"
+        kubectl -n "${namespace}" apply -f "${f}" >/dev/null
+      done
+    fi
+  fi
+fi
 
 echo "[INFO] Running Helm command..."
 "${cmd[@]}"

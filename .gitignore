@@ -36,3 +36,4 @@ webapp/tmp/*
 
 # K8s Secret files (contains sensitive credentials)
 k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
+k8s/helm/environments/resources/dr-prod/*secret*.yaml

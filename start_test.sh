@@ -271,6 +271,18 @@ else
     logit "WARN" "No jmeter runtime env file found (checked: config/jmeter.${helm_env}.env, config/jmeter.env)"
 fi
 
+plugin_install_mode="${JMETER_PLUGIN_INSTALL_MODE:-auto}"
+case "${plugin_install_mode}" in
+    true) plugin_install_mode="always" ;;
+    false) plugin_install_mode="never" ;;
+    auto|always|never) ;;
+    *)
+        logit "WARN" "Invalid JMETER_PLUGIN_INSTALL_MODE=${plugin_install_mode}, fallback to auto"
+        plugin_install_mode="auto"
+        ;;
+esac
+logit "INFO" "Plugin install mode: ${plugin_install_mode} (auto|always|never)"
+
 # Recreating each pods via helm
 if ! command -v helm >/dev/null 2>&1; then
     logit "ERROR" "helm command not found. Please install helm first."
@@ -491,8 +503,23 @@ logit "INFO" "Installing needed plugins on slave pods"
 ## Starting slave pod 
 
 {
+    echo "PLUGIN_INSTALL_MODE=\"${plugin_install_mode}\""
     echo "cd ${jmeter_directory}"
-    echo "sh PluginsManagerCMD.sh install-for-jmx ${jmx} > plugins-install.out 2> plugins-install.err"
+    echo "if [ \"\${PLUGIN_INSTALL_MODE}\" = \"never\" ]; then"
+    echo "  echo 'Skip plugin install on slave: mode=never' > plugins-install.out"
+    echo "elif [ \"\${PLUGIN_INSTALL_MODE}\" = \"always\" ]; then"
+    echo "  if ! sh PluginsManagerCMD.sh install-for-jmx ${jmx} > plugins-install.out 2> plugins-install.err; then"
+    echo "    echo 'WARN: plugin install failed on slave (mode=always), continue with bundled plugins' >> plugins-install.err"
+    echo "  fi"
+    echo "else"
+    echo "  if command -v getent >/dev/null 2>&1 && getent hosts jmeter-plugins.org >/dev/null 2>&1; then"
+    echo "    if ! sh PluginsManagerCMD.sh install-for-jmx ${jmx} > plugins-install.out 2> plugins-install.err; then"
+    echo "      echo 'WARN: plugin install failed on slave (mode=auto), continue with bundled plugins' >> plugins-install.err"
+    echo "    fi"
+    echo "  else"
+    echo "    echo 'Skip plugin install on slave: jmeter-plugins.org DNS not reachable (mode=auto)' > plugins-install.out"
+    echo "  fi"
+    echo "fi"
     echo "JVM_ARGS=\"${JMETER_SLAVE_JVM_HEAP_ARGS}\""
     echo "export JVM_ARGS"
     echo "jmeter-server -Dserver.rmi.localport=50000 -Dserver_port=1099 -Jserver.rmi.ssl.disable=true ${system_property_arg} >> jmeter-injector.out 2>> jmeter-injector.err &"
@@ -633,7 +660,21 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
 
     echo "echo \"Installing needed plugins for master\""
     echo "cd /opt/jmeter/apache-jmeter/bin"
-    echo "sh PluginsManagerCMD.sh install-for-jmx ${jmx}"
+    echo "if [ \"${plugin_install_mode}\" = \"never\" ]; then"
+    echo "  echo 'Skip plugin install on master: mode=never' > plugins-install.out"
+    echo "elif [ \"${plugin_install_mode}\" = \"always\" ]; then"
+    echo "  if ! sh PluginsManagerCMD.sh install-for-jmx ${jmx} > plugins-install.out 2> plugins-install.err; then"
+    echo "    echo 'WARN: plugin install failed on master (mode=always), continue with bundled plugins' >> plugins-install.err"
+    echo "  fi"
+    echo "else"
+    echo "  if command -v getent >/dev/null 2>&1 && getent hosts jmeter-plugins.org >/dev/null 2>&1; then"
+    echo "    if ! sh PluginsManagerCMD.sh install-for-jmx ${jmx} > plugins-install.out 2> plugins-install.err; then"
+    echo "      echo 'WARN: plugin install failed on master (mode=auto), continue with bundled plugins' >> plugins-install.err"
+    echo "    fi"
+    echo "  else"
+    echo "    echo 'Skip plugin install on master: jmeter-plugins.org DNS not reachable (mode=auto)' > plugins-install.out"
+    echo "  fi"
+    echo "fi"
     echo "echo \"Done installing plugins, launching test\""
     echo "mkdir -p /report/${jmx_dir}"
     echo "JVM_ARGS=\"${JMETER_MASTER_JVM_HEAP_ARGS}\""
