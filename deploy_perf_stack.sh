@@ -25,6 +25,7 @@ Optional:
   --master-node-label <k=v>         Optional selector for jmeter-master pod (repeatable)
   --slave-node-label <k=v>          Optional selector for jmeter-slave pods (repeatable)
   --telegraf-cluster-rbac <bool>    true for primary namespace, false for secondary (default: false)
+  --skip-telegraf-rbac-subject-sync Skip auto sync of telegraf ClusterRoleBinding subject
   --skip-dependency-build           Skip helm dependency build
   --no-create-namespace             Do not pass --create-namespace
   --dry-run                         Render/validate only (adds --dry-run --debug)
@@ -66,11 +67,14 @@ telegraf_cluster_rbac="false"
 skip_dependency_build=0
 create_namespace=1
 dry_run=0
+skip_telegraf_rbac_subject_sync=0
 master_node_labels=()
 slave_node_labels=()
 runtime_override_dir=""
 runtime_override_file=""
 runtime_override_configmap="jmeter-runtime-node-selector-override"
+telegraf_clusterrole_name="metrics-reader"
+telegraf_clusterrolebinding_name="telegraf-metrics-reader"
 
 parse_label_kv() {
   local label="$1"
@@ -134,6 +138,28 @@ sync_runtime_node_selector_configmap() {
     --dry-run=client -o yaml | kubectl -n "${ns}" apply -f - >/dev/null
 }
 
+ensure_telegraf_clusterrolebinding_subject() {
+  local ns="$1"
+  local crb_name="$2"
+  local role_name="$3"
+
+  if ! kubectl get clusterrolebinding "${crb_name}" >/dev/null 2>&1; then
+    echo "[WARN] ClusterRoleBinding ${crb_name} not found; skip telegraf SA subject sync"
+    return 0
+  fi
+
+  if kubectl get clusterrolebinding "${crb_name}" -o jsonpath='{range .subjects[*]}{.kind}{":"}{.namespace}{":"}{.name}{"\n"}{end}' \
+      | grep -Fxq "ServiceAccount:${ns}:telegraf"; then
+    echo "[INFO] telegraf SA subject already exists in ${crb_name}: ${ns}/telegraf"
+    return 0
+  fi
+
+  kubectl patch clusterrolebinding "${crb_name}" --type=json \
+    -p="[{\"op\":\"add\",\"path\":\"/subjects/-\",\"value\":{\"kind\":\"ServiceAccount\",\"name\":\"telegraf\",\"namespace\":\"${ns}\"}}]" >/dev/null
+
+  echo "[INFO] added telegraf SA subject to ${crb_name}: ${ns}/telegraf (role=${role_name})"
+}
+
 append_node_selector_set_args() {
   local prefix="$1"
   local label="$2"
@@ -170,6 +196,8 @@ while [[ $# -gt 0 ]]; do
       webapp_host="$2"; shift 2 ;;
     --telegraf-cluster-rbac)
       telegraf_cluster_rbac="$2"; shift 2 ;;
+    --skip-telegraf-rbac-subject-sync)
+      skip_telegraf_rbac_subject_sync=1; shift ;;
     --master-node-label)
       master_node_labels+=("$2"); shift 2 ;;
     --slave-node-label)
@@ -264,6 +292,7 @@ echo "[INFO] report host : ${report_host}"
 echo "[INFO] grafana host: ${grafana_host}"
 echo "[INFO] webapp host : ${webapp_host}"
 echo "[INFO] telegraf cluster RBAC create=${telegraf_cluster_rbac}"
+echo "[INFO] telegraf RBAC subject sync skip=${skip_telegraf_rbac_subject_sync}"
 if [[ ${#master_node_labels[@]} -gt 0 ]]; then
   echo "[INFO] jmeter-master node labels: ${master_node_labels[*]}"
 else
@@ -284,4 +313,9 @@ if [[ "${dry_run}" -eq 1 ]]; then
 else
   sync_runtime_node_selector_configmap "${namespace}" "${runtime_override_file}" "${runtime_override_configmap}"
   echo "[INFO] runtime override configmap: ${runtime_override_configmap} (key: override.yaml)"
+  if [[ "${skip_telegraf_rbac_subject_sync}" -eq 1 ]]; then
+    echo "[INFO] skip telegraf ClusterRoleBinding subject sync by flag"
+  else
+    ensure_telegraf_clusterrolebinding_subject "${namespace}" "${telegraf_clusterrolebinding_name}" "${telegraf_clusterrole_name}"
+  fi
 fi

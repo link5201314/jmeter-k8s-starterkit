@@ -174,6 +174,10 @@ helm upgrade --install perf-stack k8s/helm \
 - `global.master.nodeSelector.*`（可選）
 - `global.slave.nodeSelector.*`（可選）
 
+另外，腳本在 Helm 部署完成後，會自動檢查並補齊 `ClusterRoleBinding`（預設：`telegraf-metrics-reader`）內的 subject，確保包含當前 namespace 的 `telegraf` ServiceAccount（`<namespace>/telegraf`）。
+這可避免多 namespace 擴充時，Grafana dashboard 因 telegraf 權限缺漏而看不到 namespace 指標。
+若你的環境由平台/GitOps 統一管理 cluster RBAC，可加上 `--skip-telegraf-rbac-subject-sync` 跳過這個自動補齊步驟。
+
 另外，若你希望部署時就固定 jmeter master/slave 的節點池，可加上：
 
 - `--master-node-label <key=value>`（可重複）
