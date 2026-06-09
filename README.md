@@ -89,6 +89,12 @@ kubectl -n performance-test exec -it <jmeter-master-pod> -- \
 - 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
 - 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`），主要因為這兩項元件在許多現有 K8s 平台環境中可能已經預先部署或由平台統一管理，為避免重複安裝或資源衝突，故獨立於本專案 Helm 管理之外，僅作參考，或本地乾淨的lab環境部署用。
 
+## 版本里程碑（Thread 配置策略轉折點）
+
+- Commit: `b6486bd537a6674b8f74b524d724bb5846ca2ee2`
+- 定位：此版本為 webapp 驅動測試流程中，**切換到「Min Slaves + Max Threads」分割配置 threads 策略之前**的穩定可用基準點。
+- 用途：若需回溯舊行為、比對新舊分配邏輯差異，或進行回歸驗證，可優先以此 commit 作為 baseline。
+
 ## 重要架構說明：JMeter、Webapp、Report-Server 共用 PVC
 
 本專案設計特性如下：
