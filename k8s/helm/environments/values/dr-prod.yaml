@@ -6,7 +6,7 @@ global:
     enabled: false
     image:
       repository: qa_team/jmeter-k8s-jmeter-base
-      tag: "5.6.3-ctg-1"
+      tag: "5.6.3-ctg-2"
     resources:
       requests:
         memory: "3072Mi"
@@ -18,7 +18,7 @@ global:
     enabled: false
     image:
       repository: qa_team/jmeter-k8s-jmeter-base
-      tag: "5.6.3-ctg-1"
+      tag: "5.6.3-ctg-2"
     resources:
       requests:
         memory: "1536Mi"
@@ -75,7 +75,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.06.10-010344-manual-redeploy"
+    tag: "2026.06.10-022704-jolokia-bind-all-iface"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:

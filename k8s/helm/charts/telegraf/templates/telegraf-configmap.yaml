@@ -27,13 +27,86 @@ data:
     [[inputs.diskio]]
     [[inputs.kernel]]
     [[inputs.mem]]
+    [[inputs.net]]
+    [[inputs.netstat]]
+    [[inputs.nstat]]
+    [[inputs.conntrack]]
     [[inputs.processes]]
     [[inputs.swap]]
     [[inputs.system]]
     [[inputs.docker]]
       endpoint = "unix:///var/run/docker.sock"
+
+    [[inputs.internal]]
     [[inputs.kubernetes]]
       ## URL for the kubelet
       url = "https://$NODEIP:10250"
       bearer_token = "/run/secrets/kubernetes.io/serviceaccount/token"
-      insecure_skip_verify = true  
+      insecure_skip_verify = true
+
+    # Collect JVM metrics from JMeter slaves Jolokia endpoint via in-namespace service.
+    [[inputs.jolokia]]
+      interval = "2s"
+      context = "/jolokia/"
+
+      [[inputs.jolokia.servers]]
+        host = "jmeter-slaves-svc.{{ .Release.Namespace }}.svc.cluster.local"
+        port = "8778"
+
+      [[inputs.jolokia.metrics]]
+        name = "heap_memory_usage"
+        mbean = "java.lang:type=Memory"
+        attribute = "HeapMemoryUsage"
+
+      [[inputs.jolokia.metrics]]
+        name = "thread_count"
+        mbean = "java.lang:type=Threading"
+        attribute = "TotalStartedThreadCount,ThreadCount,DaemonThreadCount,PeakThreadCount"
+
+      [[inputs.jolokia.metrics]]
+        name = "gc"
+        mbean = "java.lang:name=*,type=GarbageCollector"
+        attribute = "CollectionTime,CollectionCount,LastGcInfo"
+
+    # Also collect java_* measurements compatible with the Grafana JVM dashboard.
+    [[inputs.jolokia2_agent]]
+      interval = "2s"
+      urls = ["http://jmeter-slaves-svc.{{ .Release.Namespace }}.svc.cluster.local:8778/jolokia"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name  = "java_runtime"
+        mbean = "java.lang:type=Runtime"
+        paths = ["Uptime"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name  = "java_memory"
+        mbean = "java.lang:type=Memory"
+        paths = ["HeapMemoryUsage", "NonHeapMemoryUsage", "ObjectPendingFinalizationCount"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name     = "java_garbage_collector"
+        mbean    = "java.lang:name=*,type=GarbageCollector"
+        paths    = ["CollectionTime", "CollectionCount"]
+        tag_keys = ["name"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name     = "java_last_garbage_collection"
+        mbean    = "java.lang:name=*,type=GarbageCollector"
+        paths    = ["LastGcInfo"]
+        tag_keys = ["name"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name  = "java_threading"
+        mbean = "java.lang:type=Threading"
+        paths = ["TotalStartedThreadCount", "ThreadCount", "DaemonThreadCount", "PeakThreadCount"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name  = "java_class_loading"
+        mbean = "java.lang:type=ClassLoading"
+        paths = ["LoadedClassCount", "UnloadedClassCount", "TotalLoadedClassCount"]
+
+      [[inputs.jolokia2_agent.metric]]
+        name     = "java_memory_pool"
+        mbean    = "java.lang:name=*,type=MemoryPool"
+        paths    = ["Usage", "PeakUsage", "CollectionUsage"]
+        tag_keys = ["name"]

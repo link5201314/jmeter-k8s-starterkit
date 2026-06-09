@@ -12,6 +12,9 @@ spec:
     - port: 1099
       name: jmeter
       targetPort: 1099
+    - port: 8778
+      name: jolokia
+      targetPort: 8778
     - port: 50000
       name: rmi
       targetPort: 50000

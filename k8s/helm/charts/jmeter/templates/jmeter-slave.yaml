@@ -109,6 +109,7 @@ spec:
         - containerPort: 1099
         - containerPort: 50000
         - containerPort: 4445
+        - containerPort: 8778
         resources:
           requests:
             memory: {{ .Values.global.slave.resources.requests.memory | quote }}

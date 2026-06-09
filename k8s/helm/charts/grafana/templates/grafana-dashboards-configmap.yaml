@@ -15387,7 +15387,7 @@ data:
             "steppedLine": false,
             "targets": [
               {
-                "alias": "$tag_hostname - Heap Memory - Committed",
+                "alias": "$tag_host - Heap Memory - Committed",
                 "groupBy": [
                   {
                     "params": [
@@ -15397,8 +15397,7 @@ data:
                   },
                   {
                     "params": [
-                      "hostname"
-                    ],
+                      "host"],
                     "type": "tag"
                   },
                   {
@@ -15429,14 +15428,14 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "nodename",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$nodename$/"
                   }
                 ]
               },
               {
-                "alias": "$tag_hostname - Heap Memory - Used",
+                "alias": "$tag_host - Heap Memory - Used",
                 "groupBy": [
                   {
                     "params": [
@@ -15446,8 +15445,7 @@ data:
                   },
                   {
                     "params": [
-                      "hostname"
-                    ],
+                      "host"],
                     "type": "tag"
                   },
                   {
@@ -15478,14 +15476,14 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "nodename",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$nodename$/"
                   }
                 ]
               },
               {
-                "alias": "$tag_hostname - Heap Memory - Max",
+                "alias": "$tag_host - Heap Memory - Max",
                 "groupBy": [
                   {
                     "params": [
@@ -15495,8 +15493,7 @@ data:
                   },
                   {
                     "params": [
-                      "hostname"
-                    ],
+                      "host"],
                     "type": "tag"
                   },
                   {
@@ -15527,7 +15524,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "nodename",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$nodename$/"
                   }
@@ -15631,7 +15628,7 @@ data:
             "steppedLine": false,
             "targets": [
               {
-                "alias": "$tag_hostname - GC Collection Count - $tag_name",
+                "alias": "$tag_host - GC Collection Count - $tag_name",
                 "groupBy": [
                   {
                     "params": [
@@ -15641,8 +15638,7 @@ data:
                   },
                   {
                     "params": [
-                      "hostname"
-                    ],
+                      "host"],
                     "type": "tag"
                   }
                 ],
@@ -15666,7 +15662,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "nodename",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$nodename$/"
                   }
@@ -15771,7 +15767,7 @@ data:
             "steppedLine": false,
             "targets": [
               {
-                "alias": "$tag_hostname - GC Collection Time - $tag_name",
+                "alias": "$tag_host - GC Collection Time - $tag_name",
                 "groupBy": [
                   {
                     "params": [
@@ -15781,8 +15777,7 @@ data:
                   },
                   {
                     "params": [
-                      "hostname"
-                    ],
+                      "host"],
                     "type": "tag"
                   }
                 ],
@@ -15806,7 +15801,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "nodename",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$nodename$/"
                   }
@@ -15970,7 +15965,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16013,7 +16008,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16056,7 +16051,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16201,7 +16196,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16244,7 +16239,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16287,7 +16282,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16430,7 +16425,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16474,7 +16469,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16518,7 +16513,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16656,7 +16651,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16800,7 +16795,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16844,7 +16839,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -16888,7 +16883,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17031,7 +17026,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17075,7 +17070,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17119,7 +17114,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17262,7 +17257,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17306,7 +17301,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17449,7 +17444,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17493,7 +17488,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17537,7 +17532,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17709,7 +17704,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17752,7 +17747,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17795,7 +17790,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17943,7 +17938,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -17986,7 +17981,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18029,7 +18024,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18175,7 +18170,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18219,7 +18214,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18263,7 +18258,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18404,7 +18399,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18551,7 +18546,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18595,7 +18590,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18639,7 +18634,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18785,7 +18780,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18829,7 +18824,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -18873,7 +18868,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19019,7 +19014,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19063,7 +19058,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19209,7 +19204,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19253,7 +19248,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19297,7 +19292,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19470,7 +19465,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19513,7 +19508,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19556,7 +19551,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19704,7 +19699,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19747,7 +19742,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19790,7 +19785,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19936,7 +19931,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -19980,7 +19975,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20024,7 +20019,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20165,7 +20160,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20312,7 +20307,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20356,7 +20351,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20400,7 +20395,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20546,7 +20541,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20590,7 +20585,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20634,7 +20629,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20780,7 +20775,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20824,7 +20819,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -20970,7 +20965,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21014,7 +21009,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21058,7 +21053,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21231,7 +21226,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21274,7 +21269,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21317,7 +21312,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21465,7 +21460,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21508,7 +21503,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21551,7 +21546,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21697,7 +21692,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21741,7 +21736,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21785,7 +21780,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -21926,7 +21921,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22073,7 +22068,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22117,7 +22112,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22161,7 +22156,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22307,7 +22302,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22351,7 +22346,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22395,7 +22390,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22541,7 +22536,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22585,7 +22580,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22731,7 +22726,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22775,7 +22770,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22819,7 +22814,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -22984,7 +22979,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23026,7 +23021,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23167,7 +23162,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23209,7 +23204,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23343,7 +23338,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   },
@@ -23492,7 +23487,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23534,7 +23529,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23837,7 +23832,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -23879,7 +23874,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24023,7 +24018,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24065,7 +24060,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24202,7 +24197,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   },
@@ -24354,7 +24349,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24396,7 +24391,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24703,7 +24698,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24745,7 +24740,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24889,7 +24884,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -24931,7 +24926,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25068,7 +25063,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   },
@@ -25220,7 +25215,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25262,7 +25257,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25569,7 +25564,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25611,7 +25606,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25755,7 +25750,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25797,7 +25792,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -25934,7 +25929,7 @@ data:
                 ],
                 "tags": [
                   {
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   },
@@ -26086,7 +26081,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -26128,7 +26123,7 @@ data:
                   },
                   {
                     "condition": "AND",
-                    "key": "hostname",
+                    "key": "host",
                     "operator": "=~",
                     "value": "/^$podname$/"
                   }
@@ -26380,7 +26375,7 @@ data:
           "multi": true,
           "name": "podname",
           "options": [],
-          "query": "SHOW TAG VALUES FROM jolokia WITH KEY = \"host\"",
+          "query": "SHOW TAG VALUES FROM java_memory WITH KEY = \"host\"",
           "refresh": 1,
           "regex": "",
           "skipUrlSync": false,

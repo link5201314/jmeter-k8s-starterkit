@@ -6,7 +6,7 @@ global:
     enabled: true
     image:
       repository: docker.io/isaac0815/jmeter-k8s-base
-      tag: "5.6.3-ctg-1"
+      tag: "5.6.3-ctg-2"
       digest: ""
       pullPolicy: IfNotPresent
     resources:
@@ -24,7 +24,7 @@ global:
     enabled: true
     image:
       repository: docker.io/isaac0815/jmeter-k8s-base
-      tag: "5.6.3-ctg-1"
+      tag: "5.6.3-ctg-2"
       digest: ""
       pullPolicy: IfNotPresent
     resources:

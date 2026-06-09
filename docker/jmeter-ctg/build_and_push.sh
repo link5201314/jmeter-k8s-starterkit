@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # Usage:
-#   ./docker/jmeter-ctg/build_and_push.sh <image-repo> <tag>
+#   ./docker/jmeter-ctg/build_and_push.sh <image-repo> <tag> [jolokia-version]
 # Example:
 #   ./docker/jmeter-ctg/build_and_push.sh docker.io/isaac0815/jmeter-k8s-base 5.6.3-ctg-1
+#   ./docker/jmeter-ctg/build_and_push.sh docker.io/isaac0815/jmeter-k8s-base 5.6.3-ctg-2 2.2.9
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <image-repo> <tag>"
@@ -13,6 +14,7 @@ fi
 
 IMAGE_REPO="$1"
 TAG="$2"
+JOLOKIA_VERSION="${3:-2.2.9}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -29,8 +31,10 @@ if ! command -v podman >/dev/null 2>&1; then
 fi
 
 echo "[INFO] Building image $IMAGE_REPO:$TAG"
+echo "[INFO] Jolokia version: $JOLOKIA_VERSION"
 podman build \
   -f "$DOCKERFILE_PATH" \
+  --build-arg JOLOKIA_VERSION="$JOLOKIA_VERSION" \
   -t "$IMAGE_REPO:$TAG" \
   "$ROOT_DIR"
 
