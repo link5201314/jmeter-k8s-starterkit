@@ -453,6 +453,7 @@ if [ -f "${system_properties_file}" ]; then
     add_prop_arg "jmeter.reportgenerator.overall_granularity"
     add_prop_arg "jmeter.reportgenerator.apdex_satisfied_threshold"
     add_prop_arg "jmeter.reportgenerator.apdex_tolerated_threshold"
+    add_prop_arg "jmeter.save.saveservice.subresults"
 fi
 
 # Copying module and config to pods
