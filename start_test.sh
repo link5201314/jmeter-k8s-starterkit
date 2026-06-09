@@ -4,8 +4,8 @@
 #   啟動 JMeter 分散式測試（建立/更新 runtime、同步 scenario、啟動 master/slave）。
 #
 # Examples:
-#   ./start_test.sh -j demoweb.jmx -n performance-test -i 2 -c -m -r --helm-env lab --helm-release jmeter-runtime
-#   ./start_test.sh -j demoweb.jmx -n performance-test -i 20 -c -m -r -E prod -V "tip-web=1.0.1;gemfire=2.2.3" -N "baseline"
+#   ./start_test.sh -j demoweb.jmx -n performance-test --min-slaves 2 --max-threads 300 -c -m -r --helm-env lab --helm-release jmeter-runtime
+#   ./start_test.sh -j demoweb.jmx -n performance-test --min-slaves 3 --max-threads 100 -c -m -r -E prod -V "tip-web=1.0.1;gemfire=2.2.3" -N "baseline"
 
 #=== FUNCTION ================================================================
 #        NAME: logit
@@ -38,7 +38,9 @@ usage()
   logit "INFO" "-n <namespace>"
   logit "INFO" "-c flag to split and copy csv if you use csv in your test"
   logit "INFO" "-m flag to copy fragmented jmx present in scenario/project/module if you use include controller and external test fragment"
-  logit "INFO" "-i <injectorNumber> to scale slaves pods to the desired number of JMeter injectors"
+    logit "INFO" "-i <injectorNumber> (legacy) equals --min-slaves"
+    logit "INFO" "--min-slaves <number> minimum JMeter slaves to start"
+    logit "INFO" "--max-threads <number> max total threads per slave for auto scaling"
   logit "INFO" "-r flag to enable report generation at the end of the test"
   logit "INFO" "-E <env> test environment (e.g. prod/uat/sit/pt)"
   logit "INFO" "-V <versions> app versions, ';' separated (e.g. tip-web=1.0.1;gemfire=2.2.3)"
@@ -61,7 +63,17 @@ helm_env="lab"
 helm_release="jmeter-runtime"
 helm_chart_path="${PWD}/k8s/helm/charts/jmeter"
 jmeter_env_file_override=""
+min_slaves=""
+max_threads=""
+legacy_injectors=""
 
+###############################################################################
+# 1) Parse CLI arguments
+#
+# Notes:
+# - -i is kept for backward compatibility and mapped to min_slaves.
+# - --max-threads enables adaptive JMX thread distribution when > 0.
+###############################################################################
 ### Parsing the arguments ###
 while [[ $# -gt 0 ]]; do
   seen_args=1
@@ -71,10 +83,12 @@ while [[ $# -gt 0 ]]; do
     -m) module=1; shift ;;
     -r) enable_report=1; shift ;;
     -j) jmx="$2"; shift 2 ;;
-    -i) nb_injectors="$2"; shift 2 ;;
+    -i) legacy_injectors="$2"; shift 2 ;;
     -E) report_env="$2"; shift 2 ;;
     -V) report_versions="$2"; shift 2 ;;
     -N) report_note="$2"; shift 2 ;;
+    --min-slaves) min_slaves="$2"; shift 2 ;;
+    --max-threads) max_threads="$2"; shift 2 ;;
     --helm-env) helm_env="$2"; shift 2 ;;
     --helm-release) helm_release="$2"; shift 2 ;;
     --helm-chart) helm_chart_path="$2"; shift 2 ;;
@@ -102,6 +116,12 @@ if [ "${seen_args}" -eq 0 ]; then
   usage
 fi
 
+###############################################################################
+# 2) Validate and normalize runtime options
+#
+# - Resolve min_slaves from legacy -i when needed.
+# - Ensure numeric constraints before any cluster-side action.
+###############################################################################
 ### CHECKING VARS ###
 if [ -z "${namespace}" ]; then
     logit "ERROR" "Namespace not provided!"
@@ -115,6 +135,27 @@ if [ -z "${jmx}" ]; then
     usage
 fi
 
+if [ -z "${min_slaves}" ] && [ -n "${legacy_injectors}" ]; then
+    min_slaves="${legacy_injectors}"
+fi
+if [ -z "${min_slaves}" ]; then
+    min_slaves=1
+    logit "WARN" "Min Slaves not provided, default to 1"
+fi
+if ! [[ "${min_slaves}" =~ ^[0-9]+$ ]] || [ "${min_slaves}" -lt 1 ]; then
+    logit "ERROR" "Invalid --min-slaves: ${min_slaves} (must be integer >= 1)"
+    exit 1
+fi
+
+if [ -z "${max_threads}" ]; then
+    max_threads=0
+fi
+if ! [[ "${max_threads}" =~ ^[0-9]+$ ]]; then
+    logit "ERROR" "Invalid --max-threads: ${max_threads} (must be integer >= 0)"
+    exit 1
+fi
+
+# Quick preflight warnings for common report accessibility issues.
 # 檢查 report-server 與 PVC 是否在同一 namespace
 if ! kubectl -n "${namespace}" get pvc jmeter-data-dir-pvc >/dev/null 2>&1; then
     logit "WARN" "PVC jmeter-data-dir-pvc 不在 namespace=${namespace}，報表可能無法被 report-server 讀取"
@@ -124,6 +165,9 @@ if ! kubectl -n "${namespace}" get deploy report-server >/dev/null 2>&1; then
 fi
 
 jmx_dir="${jmx%%.*}"
+
+# Prefix scenario .env keys with JMETERTEST_ in a temporary file, so sourcing
+# does not pollute unrelated shell variables.
 preprocess_env_file() {
     local env_file="$1"
     local temp_file
@@ -152,7 +196,13 @@ preprocess_env_file() {
             # Trim whitespace from variable name
             var_name=$(echo "$var_name" | xargs)
 
-            # Add JMETERTEST_ prefix to variable name
+            # Add JMETERTEST_ prefix only for shell-safe names. Keys like td-1
+            # are kept for direct .env parsing in adaptive/global param logic.
+            if ! [[ "${var_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                logit "WARN" "Skip JMETERTEST_ export for non-shell key: ${var_name}"
+                continue
+            fi
+
             local prefixed_var="JMETERTEST_${var_name}"
 
             # Reconstruct the line with prefixed variable name
@@ -168,7 +218,7 @@ preprocess_env_file() {
     PREPROCESSED_ENV_FILE="$temp_file"
 }
 
-# Function to preprocess report-meta.env file by adding JMETERREPORT_ prefix to variables
+# Prefix report metadata keys with JMETERREPORT_ for clean separation.
 preprocess_report_meta_file() {
     local meta_file="$1"
     local temp_file
@@ -213,6 +263,9 @@ preprocess_report_meta_file() {
     PREPROCESSED_REPORT_META_FILE="$temp_file"
 }
 
+###############################################################################
+# 3) Resolve scenario/report metadata inputs and runtime env files
+###############################################################################
 # Process meta_file if specified (after function definitions)
 if [ -n "${meta_file}" ]; then
     # meta_file 路徑規則：若為相對路徑，預設放在 scenario/${jmx_dir}/
@@ -283,6 +336,242 @@ case "${plugin_install_mode}" in
 esac
 logit "INFO" "Plugin install mode: ${plugin_install_mode} (auto|always|never)"
 
+# Load scenario env early so adaptive thread calculation can resolve ${__P(...)} values.
+scenario_env_file="scenario/${jmx_dir}/.env"
+scenario_env_loaded=0
+if preprocess_env_file "${scenario_env_file}"; then
+    if [ -n "${PREPROCESSED_ENV_FILE}" ] && [ -f "${PREPROCESSED_ENV_FILE}" ]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "${PREPROCESSED_ENV_FILE}"
+        set +a
+        rm -f "${PREPROCESSED_ENV_FILE}"
+        scenario_env_loaded=1
+    fi
+fi
+if [ "${scenario_env_loaded}" -eq 0 ] && [ -f "${scenario_env_file}" ]; then
+    logit "WARN" "Preprocessed env unavailable, fallback to source original .env for runtime params"
+    set -a
+    # shellcheck disable=SC1090
+    source "${scenario_env_file}"
+    set +a
+fi
+
+# Build per-slave scaled JMX files when adaptive mode is enabled.
+#
+# Strategy:
+# - Parse supported thread group types only:
+#   1) ThreadGroup.ThreadGroup.num_threads
+#   2) ConcurrencyThreadGroup.TargetLevel
+# - Resolve values from JMETERTEST_* env / __P defaults.
+# - Compute target slave count by max(min_slaves, ceil(total_threads/max_threads)).
+# - Distribute each thread group by ceil(threads/slaves), so each slave participates.
+generate_scaled_jmx_files() {
+    local source_jmx="$1"
+    local output_dir="$2"
+    local requested_min_slaves="$3"
+    local requested_max_threads="$4"
+    local scenario_env_file="$5"
+
+    python3 - "$source_jmx" "$output_dir" "$requested_min_slaves" "$requested_max_threads" "$scenario_env_file" <<'PY'
+import copy
+import math
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+source_jmx = sys.argv[1]
+output_dir = sys.argv[2]
+min_slaves = int(sys.argv[3])
+max_threads = int(sys.argv[4])
+scenario_env_file = sys.argv[5]
+
+
+def load_env_file(path: str):
+    env_data = {}
+    if not path or not os.path.isfile(path):
+        return env_data
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
+            env_data[key] = value
+    return env_data
+
+
+file_env = load_env_file(scenario_env_file)
+
+
+def resolve_from_sources(key: str):
+    key = (key or "").strip()
+    if not key:
+        return None
+
+    for candidate in (key, key.replace("_", "-"), key.replace("-", "_")):
+        val = file_env.get(candidate)
+        if val is not None and re.fullmatch(r"\d+", val.strip()):
+            return int(val.strip())
+
+    for candidate in (key, key.replace("_", "-"), key.replace("-", "_")):
+        env_key = f"JMETERTEST_{candidate}"
+        val = os.environ.get(env_key)
+        if val is not None and re.fullmatch(r"\d+", val.strip()):
+            return int(val.strip())
+
+    return None
+
+def parse_value(expr: str):
+    text = (expr or "").strip()
+    if re.fullmatch(r"\d+", text):
+        return int(text)
+
+    m = re.fullmatch(r"\$\{__P\(([^,\)]+),\s*([^\)]*)\)\}", text)
+    if m:
+        key = m.group(1).strip()
+        default = m.group(2).strip()
+        resolved = resolve_from_sources(key)
+        if resolved is not None:
+            return resolved
+
+        var_default = re.fullmatch(r"\$\{([^\}]+)\}", default)
+        if var_default:
+            dkey = var_default.group(1).strip()
+            resolved_default = resolve_from_sources(dkey)
+            if resolved_default is not None:
+                return resolved_default
+        if re.fullmatch(r"\d+", default):
+            return int(default)
+        return None
+
+    var = re.fullmatch(r"\$\{([^\}]+)\}", text)
+    if var:
+        key = var.group(1).strip()
+        resolved = resolve_from_sources(key)
+        if resolved is not None:
+            return resolved
+    return None
+
+tree = ET.parse(source_jmx)
+root = tree.getroot()
+groups = []
+
+for elem in root.iter():
+    tag = elem.tag
+    target_name = None
+    if tag == "ThreadGroup":
+        target_name = "ThreadGroup.num_threads"
+    elif tag == "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
+        target_name = "TargetLevel"
+
+    if not target_name:
+        continue
+
+    target_prop = None
+    for child in elem:
+        if child.tag == "stringProp" and child.attrib.get("name") == target_name:
+            target_prop = child
+            break
+    if target_prop is None:
+        continue
+
+    resolved = parse_value(target_prop.text or "")
+    if resolved is None:
+        print("ADAPTIVE_ERROR=1")
+        print("ADAPTIVE_REASON=unresolved_thread_expression")
+        print("TARGET_INJECTORS=%d" % min_slaves)
+        print("ADAPTIVE_ENABLED=0")
+        raise SystemExit(0)
+
+    if resolved < 0:
+        resolved = 0
+    groups.append((target_name, resolved))
+
+if not groups:
+    print("ADAPTIVE_ERROR=0")
+    print("ADAPTIVE_REASON=no_supported_groups")
+    print("TARGET_INJECTORS=%d" % min_slaves)
+    print("ADAPTIVE_ENABLED=0")
+    raise SystemExit(0)
+
+total_threads = sum(v for _, v in groups)
+if total_threads <= 0:
+    print("ADAPTIVE_ERROR=0")
+    print("ADAPTIVE_REASON=zero_total_threads")
+    print("TARGET_INJECTORS=%d" % min_slaves)
+    print("ADAPTIVE_ENABLED=0")
+    raise SystemExit(0)
+
+required_by_max = 0
+if max_threads > 0:
+    required_by_max = int(math.ceil(total_threads / float(max_threads)))
+target_slaves = max(min_slaves, required_by_max)
+if target_slaves < 1:
+    target_slaves = 1
+
+allocations = []
+group_effective_totals = []
+group_breakdown = []
+for idx, (_, value) in enumerate(groups, start=1):
+    per_slave = int(math.ceil(value / float(target_slaves)))
+    allocations.append([per_slave for _ in range(target_slaves)])
+    effective_total = per_slave * target_slaves
+    group_effective_totals.append(effective_total)
+    group_breakdown.append(f"g{idx}:{value}->{per_slave}x{target_slaves}(actual={effective_total})")
+
+effective_total_threads = sum(group_effective_totals)
+inflation_ratio_pct = ((effective_total_threads - total_threads) / float(total_threads) * 100.0) if total_threads > 0 else 0.0
+
+os.makedirs(output_dir, exist_ok=True)
+for idx in range(target_slaves):
+    cloned = copy.deepcopy(root)
+    group_index = 0
+    for elem in cloned.iter():
+        tag = elem.tag
+        target_name = None
+        if tag == "ThreadGroup":
+            target_name = "ThreadGroup.num_threads"
+        elif tag == "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
+            target_name = "TargetLevel"
+        if not target_name:
+            continue
+        for child in elem:
+            if child.tag == "stringProp" and child.attrib.get("name") == target_name:
+                child.text = str(allocations[group_index][idx])
+                group_index += 1
+                break
+
+    slave_dir = os.path.join(output_dir, f"slave_{idx}")
+    os.makedirs(slave_dir, exist_ok=True)
+    out_file = os.path.join(slave_dir, os.path.basename(source_jmx))
+    ET.ElementTree(cloned).write(out_file, encoding="utf-8", xml_declaration=True)
+
+slave_totals = [sum(group_alloc[i] for group_alloc in allocations) for i in range(target_slaves)]
+
+print("ADAPTIVE_ERROR=0")
+print("ADAPTIVE_REASON=ok")
+print("ADAPTIVE_ENABLED=1")
+print("ADAPTIVE_TOTAL_THREADS=%d" % total_threads)
+print("ADAPTIVE_EFFECTIVE_TOTAL_THREADS=%d" % effective_total_threads)
+print("ADAPTIVE_INFLATION_RATIO_PCT=%.2f" % inflation_ratio_pct)
+print("ADAPTIVE_GROUP_BREAKDOWN=%s" % ";".join(group_breakdown))
+print("TARGET_INJECTORS=%d" % target_slaves)
+print("ADAPTIVE_SLAVE_TOTALS=%s" % ",".join(str(v) for v in slave_totals))
+print("ADAPTIVE_OUTPUT_DIR=%s" % output_dir)
+PY
+}
+
+###############################################################################
+# 4) Compute target slave count and deploy runtime via Helm
+###############################################################################
 # Recreating each pods via helm
 if ! command -v helm >/dev/null 2>&1; then
     logit "ERROR" "helm command not found. Please install helm first."
@@ -294,37 +583,92 @@ if [ ! -d "${helm_chart_path}" ]; then
     exit 1
 fi
 
-target_injectors="${nb_injectors}"
-if [ -z "${target_injectors}" ]; then
-    target_injectors=1
-    logit "WARN" "Injector number not provided, default to 1"
+target_injectors="${min_slaves}"
+adaptive_enabled=0
+adaptive_total_threads=0
+adaptive_effective_total_threads=0
+adaptive_inflation_ratio_pct="0.00"
+adaptive_reason="disabled"
+adaptive_jmx_dir=""
+adaptive_slave_totals=""
+adaptive_group_breakdown=""
+
+if [ "${max_threads}" -gt 0 ]; then
+    adaptive_jmx_dir="$(mktemp -d)"
+    while IFS='=' read -r key value; do
+        case "${key}" in
+            ADAPTIVE_ENABLED) adaptive_enabled="${value}" ;;
+            ADAPTIVE_TOTAL_THREADS) adaptive_total_threads="${value}" ;;
+            ADAPTIVE_EFFECTIVE_TOTAL_THREADS) adaptive_effective_total_threads="${value}" ;;
+            ADAPTIVE_INFLATION_RATIO_PCT) adaptive_inflation_ratio_pct="${value}" ;;
+            ADAPTIVE_GROUP_BREAKDOWN) adaptive_group_breakdown="${value}" ;;
+            ADAPTIVE_REASON) adaptive_reason="${value}" ;;
+            ADAPTIVE_SLAVE_TOTALS) adaptive_slave_totals="${value}" ;;
+            TARGET_INJECTORS) target_injectors="${value}" ;;
+            ADAPTIVE_OUTPUT_DIR) adaptive_jmx_dir="${value}" ;;
+            ADAPTIVE_ERROR)
+                if [ "${value}" != "0" ]; then
+                    adaptive_enabled=0
+                    target_injectors="${min_slaves}"
+                    adaptive_reason="error"
+                fi
+                ;;
+        esac
+    done < <(generate_scaled_jmx_files "scenario/${jmx_dir}/${jmx}" "${adaptive_jmx_dir}" "${min_slaves}" "${max_threads}" "${scenario_env_file}")
 fi
 
+if [ "${adaptive_enabled}" = "1" ]; then
+    inflation_prefix="+"
+    case "${adaptive_inflation_ratio_pct}" in
+        -*) inflation_prefix="" ;;
+    esac
+
+    logit "INFO" "Adaptive distribution enabled: total_threads=${adaptive_total_threads}, min_slaves=${min_slaves}, max_threads=${max_threads}, target_slaves=${target_injectors}"
+    logit "INFO" "Adaptive summary: slaves=${target_injectors}, inflation=${inflation_prefix}${adaptive_inflation_ratio_pct}% (${adaptive_total_threads} -> ${adaptive_effective_total_threads})"
+    logit "INFO" "Adaptive totals: original_total_threads=${adaptive_total_threads}, effective_total_threads=${adaptive_effective_total_threads}, inflation_pct=${adaptive_inflation_ratio_pct}%"
+    logit "INFO" "Adaptive group breakdown: ${adaptive_group_breakdown}"
+    logit "INFO" "Adaptive per-slave total threads: ${adaptive_slave_totals}"
+else
+    logit "INFO" "Adaptive distribution disabled: reason=${adaptive_reason}, target_slaves=${target_injectors}"
+fi
+
+# Generate one-off runtime values to control slave parallelism and optional
+# resource overrides from config/jmeter*.env.
 run_values_file="$(mktemp)"
 {
     echo "slaves:"
     echo "  parallelism: ${target_injectors}"
 
+    need_global_resources=0
+    if [ -n "${JMETER_MASTER_REQUEST_MEMORY}" ] || [ -n "${JMETER_MASTER_REQUEST_CPU}" ] || [ -n "${JMETER_MASTER_LIMIT_MEMORY}" ] || [ -n "${JMETER_MASTER_LIMIT_CPU}" ] || \
+       [ -n "${JMETER_SLAVE_REQUEST_MEMORY}" ] || [ -n "${JMETER_SLAVE_REQUEST_CPU}" ] || [ -n "${JMETER_SLAVE_LIMIT_MEMORY}" ] || [ -n "${JMETER_SLAVE_LIMIT_CPU}" ]; then
+        need_global_resources=1
+    fi
+
+    if [ "${need_global_resources}" -eq 1 ]; then
+        echo "global:"
+    fi
+
     if [ -n "${JMETER_MASTER_REQUEST_MEMORY}" ] || [ -n "${JMETER_MASTER_REQUEST_CPU}" ] || [ -n "${JMETER_MASTER_LIMIT_MEMORY}" ] || [ -n "${JMETER_MASTER_LIMIT_CPU}" ]; then
-        echo "master:"
-        echo "  resources:"
-        echo "    requests:"
-        echo "      memory: \"${JMETER_MASTER_REQUEST_MEMORY}\""
-        echo "      cpu: \"${JMETER_MASTER_REQUEST_CPU}\""
-        echo "    limits:"
-        echo "      memory: \"${JMETER_MASTER_LIMIT_MEMORY}\""
-        echo "      cpu: \"${JMETER_MASTER_LIMIT_CPU}\""
+        echo "  master:"
+        echo "    resources:"
+        echo "      requests:"
+        echo "        memory: \"${JMETER_MASTER_REQUEST_MEMORY}\""
+        echo "        cpu: \"${JMETER_MASTER_REQUEST_CPU}\""
+        echo "      limits:"
+        echo "        memory: \"${JMETER_MASTER_LIMIT_MEMORY}\""
+        echo "        cpu: \"${JMETER_MASTER_LIMIT_CPU}\""
     fi
 
     if [ -n "${JMETER_SLAVE_REQUEST_MEMORY}" ] || [ -n "${JMETER_SLAVE_REQUEST_CPU}" ] || [ -n "${JMETER_SLAVE_LIMIT_MEMORY}" ] || [ -n "${JMETER_SLAVE_LIMIT_CPU}" ]; then
-        echo "slave:"
-        echo "  resources:"
-        echo "    requests:"
-        echo "      memory: \"${JMETER_SLAVE_REQUEST_MEMORY}\""
-        echo "      cpu: \"${JMETER_SLAVE_REQUEST_CPU}\""
-        echo "    limits:"
-        echo "      memory: \"${JMETER_SLAVE_LIMIT_MEMORY}\""
-        echo "      cpu: \"${JMETER_SLAVE_LIMIT_CPU}\""
+        echo "  slave:"
+        echo "    resources:"
+        echo "      requests:"
+        echo "        memory: \"${JMETER_SLAVE_REQUEST_MEMORY}\""
+        echo "        cpu: \"${JMETER_SLAVE_REQUEST_CPU}\""
+        echo "      limits:"
+        echo "        memory: \"${JMETER_SLAVE_LIMIT_MEMORY}\""
+        echo "        cpu: \"${JMETER_SLAVE_LIMIT_CPU}\""
     fi
 } > "${run_values_file}"
 
@@ -397,6 +741,9 @@ if [ -n "${runtime_node_selector_values_tmp}" ] && [ -f "${runtime_node_selector
     rm -f "${runtime_node_selector_values_tmp}"
 fi
 
+###############################################################################
+# 5) Wait for runtime readiness and discover pod identities
+###############################################################################
 logit "INFO" "Waiting for pods to be ready"
 end=${target_injectors}
 validation_string=""
@@ -482,10 +829,22 @@ fi
 logit "INFO" "Copying ${jmx} to slaves pods"
 logit "INFO" "Number of slaves is ${slave_num}"
 
+# In distributed mode, master testfile is the source plan pushed to all slaves.
+# So adaptive thread scaling must also be applied to the JMX copied into master.
+master_jmx_source="scenario/${jmx_dir}/${jmx}"
+if [ "${adaptive_enabled}" = "1" ] && [ -f "${adaptive_jmx_dir}/slave_0/${jmx}" ]; then
+    master_jmx_source="${adaptive_jmx_dir}/slave_0/${jmx}"
+fi
+
 for ((i=0; i<end; i++))
 do
-    logit "INFO" "Copying scenario/${jmx_dir}/${jmx} to ${slave_pods[$i]}"
-    kubectl cp -c jmslave "scenario/${jmx_dir}/${jmx}" -n "${namespace}" "${slave_pods[$i]}:/opt/jmeter/apache-jmeter/bin/" &
+    slave_jmx_source="scenario/${jmx_dir}/${jmx}"
+    if [ "${adaptive_enabled}" = "1" ] && [ -f "${adaptive_jmx_dir}/slave_${i}/${jmx}" ]; then
+        slave_jmx_source="${adaptive_jmx_dir}/slave_${i}/${jmx}"
+    fi
+
+    logit "INFO" "Copying ${slave_jmx_source} to ${slave_pods[$i]} as ${jmx}"
+    kubectl cp -c jmslave "${slave_jmx_source}" -n "${namespace}" "${slave_pods[$i]}:/opt/jmeter/apache-jmeter/bin/${jmx}" &
     if [ -n "${system_property_arg}" ]; then
         logit "INFO" "Copying ${system_properties_file} to ${slave_pods[$i]}"
         kubectl cp -c jmslave "${system_properties_file}" -n "${namespace}" "${slave_pods[$i]}:${jmeter_directory}/jmeter-system.properties" &
@@ -493,13 +852,16 @@ do
 done # for i in "${slave_pods[@]}"
 logit "INFO" "Finish copying scenario in slaves pod"
 
-logit "INFO" "Copying scenario/${jmx_dir}/${jmx} into ${master_pod}"
-kubectl cp -c jmmaster "scenario/${jmx_dir}/${jmx}" -n "${namespace}" "${master_pod}:/opt/jmeter/apache-jmeter/bin/" &
+logit "INFO" "Copying ${master_jmx_source} into ${master_pod} as ${jmx}"
+kubectl cp -c jmmaster "${master_jmx_source}" -n "${namespace}" "${master_pod}:/opt/jmeter/apache-jmeter/bin/${jmx}" &
 if [ -n "${system_property_arg}" ]; then
     logit "INFO" "Copying ${system_properties_file} into ${master_pod}"
     kubectl cp -c jmmaster "${system_properties_file}" -n "${namespace}" "${master_pod}:${jmeter_directory}/jmeter-system.properties" &
 fi
 
+###############################################################################
+# 7) Build startup scripts, datasets, and launch slave engines
+###############################################################################
 logit "INFO" "Installing needed plugins on slave pods"
 ## Starting slave pod 
 
@@ -529,7 +891,7 @@ logit "INFO" "Installing needed plugins on slave pods"
     echo "wait"
 } > "scenario/${jmx_dir}/jmeter_injector_start.sh"
 
-# Copying dataset on slave pods
+# Split dataset CSV by slave count, preserve header in each chunk, and upload.
 if [ -n "${csv}" ]; then
     logit "INFO" "Splitting and uploading csv to pods"
     dataset_dir=./scenario/dataset
@@ -600,38 +962,38 @@ logit "INFO" "JMeter slave list : ${slave_list}"
 slave_array=($(echo ${slave_list} | sed 's/,/ /g'))
 
 
+###############################################################################
+# 8) Build master load_test script and launch distributed test
+###############################################################################
 ## Starting Jmeter load test
-# Preprocess .env file to add JMETERTEST_ prefix to avoid variable pollution
-preprocess_env_file "scenario/${jmx_dir}/.env"
-if [ -n "${PREPROCESSED_ENV_FILE}" ] && [ -f "${PREPROCESSED_ENV_FILE}" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "${PREPROCESSED_ENV_FILE}"
-    set +a
-    rm -f "${PREPROCESSED_ENV_FILE}"
-else
-    logit "WARN" "Preprocessed env file unavailable, fallback to source original .env"
-    source "scenario/${jmx_dir}/.env"
-fi
+# .env was already preprocessed/sourced before adaptive slave calculation.
 
-# Function to build JMeter global parameters from JMETERTEST_ prefixed environment variables
+# Function to build JMeter global parameters from scenario .env.
+# This keeps original property names (e.g. td-1) so __P(td-1,...) works.
 build_jmeter_global_params() {
     local all_params=""
 
-    # Iterate through all environment variables that start with JMETERTEST_
-    for var in $(env | grep '^JMETERTEST_' | cut -d'=' -f1); do
-        # Remove JMETERTEST_ prefix to get the JMeter variable name
-        local jmeter_var="${var#JMETERTEST_}"
-        # Get the value of the variable
-        local var_value="${!var}"
+    if [ -f "${scenario_env_file}" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]; then
+                continue
+            fi
 
-        if [ -n "${var_value}" ]; then
-            # Build JMeter parameter
-            local param="-G${jmeter_var}=${var_value}"
-            all_params="${all_params} ${param}"
-            logit "INFO" "Global parameter: ${param}"
-        fi
-    done
+            if [[ "$line" =~ ^[[:space:]]*([^=]+)[[:space:]]*=(.*)$ ]]; then
+                local key="${BASH_REMATCH[1]}"
+                local value="${BASH_REMATCH[2]}"
+
+                key=$(echo "$key" | xargs)
+                value=$(echo "$value" | sed 's/[[:space:]]*$//')
+
+                if [ -n "${value}" ]; then
+                    local param="-G${key}=${value}"
+                    all_params="${all_params} ${param}"
+                    logit "INFO" "Global parameter: ${param}"
+                fi
+            fi
+        done < "${scenario_env_file}"
+    fi
 
     param_all="${all_params}"
 }
@@ -747,4 +1109,9 @@ GRAFANA_PASSWORD=$(kubectl -n "${namespace}" get secret grafana-creds -o yaml | 
 logit "INFO" " LOGIN : ${GRAFANA_LOGIN}"
 logit "INFO" " PASSWORD : ${GRAFANA_PASSWORD}"
 logit "INFO" "################################################"
+
+# Cleanup temporary adaptive artifacts generated for per-slave JMX.
+if [ -n "${adaptive_jmx_dir}" ] && [ -d "${adaptive_jmx_dir}" ]; then
+    rm -rf "${adaptive_jmx_dir}"
+fi
 

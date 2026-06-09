@@ -570,7 +570,7 @@ helm install jmeter-k8s-starterkit-helm-charts/jmeter-k8s-starterkit --generate-
 
 ### 3. Starting the test
 
-`./start_test.sh -j my-scenario.jmx -n default -c -m -i 20 -r`
+`./start_test.sh -j my-scenario.jmx -n default -c -m --min-slaves 3 --max-threads 300 -r`
 
 Usage :
 ```sh
@@ -578,7 +578,9 @@ Usage :
    -n <namespace>
    -c flag to split and copy csv if you use csv in your test
    -m flag to copy fragmented jmx present in scenario/project/module if you use include controller and external test fragment
-   -i <injectorNumber> to scale slaves pods to the desired number of JMeter injectors
+  --min-slaves <number> minimum number of JMeter slaves
+  --max-threads <number> max total threads per slave (0 to disable adaptive scaling)
+  -i <injectorNumber> legacy option, equivalent to --min-slaves
    -r flag to enable report generation at the end of the test
 ```
 
@@ -586,7 +588,7 @@ Usage :
 **The script will :**
 
 - Delete and create again the JMeter jobs.
-- Scale the JMeter slave deployment to the desired number of injectors
+- Scale the JMeter slave deployment to the computed target slave count
 - Wait to all the slaves pods to be available. Here, available means that the filesystem is reacheable (liveness probe that cat a file inside the fs)
 - If needed will split the CSV locally then copy them inside the slave pods
 - If needed will upload the JMeter modules inside the slave pods
@@ -626,6 +628,7 @@ You can do this for the generated report and the JTL for example.
 - [1) 提供額外參數檔](#1-提供額外參數檔)
 - [2) 參數前綴預處理（避免環境變數污染）](#2-參數前綴預處理避免環境變數污染)
 - [3) 新增 CLI 參數](#3-新增-cli-參數)
+- [3-1) Thread 分配策略（目前：無條件進位平均）](#3-1-thread-分配策略目前無條件進位平均)
 - [4) 報表 metadata 自動注入（搭配 -r）](#4-報表-metadata-自動注入搭配--r)
 - [5) jmeter-system.properties 自動帶入](#5-jmetersystemproperties-自動帶入)
 - [6) CSV 分檔流程強化](#6-csv-分檔流程強化)
@@ -704,6 +707,30 @@ jmeter-k8s-starterkit/
 
 ---
 
+### 3-1) Thread 分配策略（目前：無條件進位平均）
+
+當啟用 `--max-threads`（> 0）時，`start_test.sh` 會先解析支援的 thread group，計算總 thread 與目標 slave 數（`max(min-slaves, ceil(total/max-threads))`），再對每個 thread group 採用「無條件進位平均」分配：
+
+- `per_slave = ceil(threads / slaves)`
+- 每個 slave 皆分配 `per_slave`
+
+這種做法的特性：
+
+- 每個 slave 都能參與各 thread group，較容易對齊 CSV 平均分檔策略
+- 可能使每個 thread group 的實際總 thread 高於原始 `.env` / JMX 定義（屬於可接受的模型上浮）
+
+#### 可優化方向：策略切換機制（規劃中）
+
+目前預設採用無條件進位平均；後續可考慮新增可切換策略，例如：
+
+- `balanced`：餘數平攤，總 thread 與原始定義一致
+- `ceil-all`：每個 slave 皆使用 `ceil(threads/slaves)`（現行），提升參與度但總 thread 可能上浮
+- `balanced-with-min1`：在可行時先保證每個 slave 至少 1 thread，再平攤剩餘量
+
+建議未來可加參數（如 `--thread-distribution-policy`）做策略切換，兼顧「總壓力精準」與「每個 slave 都參與」兩種需求。
+
+---
+
 ### 4) 報表 metadata 自動注入（搭配 `-r`）
 啟用 `-r` 產報後，會將以下資訊注入 HTML 報表：
 - Environment
@@ -734,7 +761,7 @@ cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.pr
 啟用 `-c` 時：
 - 先保留原始 CSV header
 - 將資料列打散（shuffle）
-- 依 injector 數切分後，每份再補回 header
+- 依最終 slave 數切分後，每份再補回 header
 - 分別上傳到各 slave pod
 
 ---
@@ -820,7 +847,7 @@ kubectl delete -f k8s/metric-server.yaml
 ```
 
 ```bash
-./start_test.sh -j my-scenario.jmx -n default -i 2 -c -m -r \
+./start_test.sh -j my-scenario.jmx -n default --min-slaves 2 --max-threads 300 -c -m -r \
   --helm-env lab \
   --helm-release jmeter-runtime \
   -E prod \
@@ -925,7 +952,7 @@ helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environmen
 
 ```bash
 # 啟動測試（Lab）
-./start_test.sh -j demoweb.jmx -n performance-test -i 20 -c -m -r \
+./start_test.sh -j demoweb.jmx -n performance-test --min-slaves 3 --max-threads 300 -c -m -r \
   --helm-env lab \
   --helm-release jmeter-runtime \
   -E lab \
@@ -944,7 +971,7 @@ helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environmen
 
 ```bash
 # 啟動測試（DR-Prod，使用私有 registry values）
-./start_test.sh -j demoweb.jmx -n performance-test -i 20 -c -m -r \
+./start_test.sh -j demoweb.jmx -n performance-test --min-slaves 3 --max-threads 300 -c -m -r \
   --helm-env dr-prod \
   --helm-release jmeter-runtime \
   -E dr-prod \
@@ -967,8 +994,8 @@ helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environmen
 helm dependency build k8s/helm
 helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespace -f k8s/helm/environments/values/lab.yaml
 
-# 執行測試（2 injectors）
-./start_test.sh -j demoweb.jmx -n performance-test -i 2 -c -m -r --helm-env lab --helm-release jmeter-runtime
+# 執行測試（Min Slaves=2, Max Threads=300）
+./start_test.sh -j demoweb.jmx -n performance-test --min-slaves 2 --max-threads 300 -c -m -r --helm-env lab --helm-release jmeter-runtime
 
 # 停測（保留 jmeter-runtime）
 ./stop_test.sh -n performance-test
@@ -981,8 +1008,8 @@ helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespac
 helm dependency build k8s/helm
 helm upgrade --install perf-stack k8s/helm -n performance-test --create-namespace -f k8s/helm/environments/values/dr-prod.yaml
 
-# 執行測試（2 injectors）
-./start_test.sh -j demoweb.jmx -n performance-test -i 2 -c -m -r --helm-env dr-prod --helm-release jmeter-runtime
+# 執行測試（Min Slaves=2, Max Threads=300）
+./start_test.sh -j demoweb.jmx -n performance-test --min-slaves 2 --max-threads 300 -c -m -r --helm-env dr-prod --helm-release jmeter-runtime
 
 # 停測並清掉 jmeter-runtime
 ./stop_test.sh -n performance-test -u --helm-release jmeter-runtime

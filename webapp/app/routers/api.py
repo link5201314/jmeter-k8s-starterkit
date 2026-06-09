@@ -298,7 +298,8 @@ def start_test(
     project: str = Form(...),
     jmx_file: str | None = Form(None),
     namespace: str = Form("performance-test"),
-    injectors: int = Form(2),
+    min_slaves: int = Form(2),
+    max_threads: int = Form(0),
     helm_env: str = Form("lab"),
     helm_release: str = Form("jmeter-runtime"),
     copy_csv: bool = Form(True),
@@ -307,6 +308,11 @@ def start_test(
 ):
     if not START_SCRIPT.exists():
         raise HTTPException(500, "start_test.sh not found")
+
+    if min_slaves < 1:
+        raise HTTPException(400, "min_slaves must be >= 1")
+    if max_threads < 0:
+        raise HTTPException(400, "max_threads must be >= 0")
 
     jmx_name = (jmx_file or "").strip()
     if not jmx_name.endswith(".jmx"):
@@ -326,8 +332,10 @@ def start_test(
         jmx_name,
         "-n",
         namespace,
-        "-i",
-        str(injectors),
+        "--min-slaves",
+        str(min_slaves),
+        "--max-threads",
+        str(max_threads),
         "--helm-env",
         helm_env,
         "--helm-release",
@@ -343,7 +351,10 @@ def start_test(
         cmd.append("-r")
 
     log_path = REPO_ROOT / "webapp" / "logs" / "start_test.log"
-    run_background("start_test", cmd, REPO_ROOT, log_path)
+    try:
+        run_background("start_test", cmd, REPO_ROOT, log_path)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "cmd": cmd}
 
 
@@ -361,7 +372,10 @@ def stop_test(
         cmd.extend(["-u", "--helm-release", helm_release])
 
     log_path = REPO_ROOT / "webapp" / "logs" / "stop_test.log"
-    run_background("stop_test", cmd, REPO_ROOT, log_path)
+    try:
+        run_background("stop_test", cmd, REPO_ROOT, log_path)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "cmd": cmd}
 
 

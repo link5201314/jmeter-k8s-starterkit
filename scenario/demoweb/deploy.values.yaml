@@ -1,7 +1,7 @@
 # demoweb 專案層 Helm 覆蓋
 # start_test.sh 會自動載入此檔，並與 k8s/helm/environments/<env>.yaml + run-values 疊加
 
-# 預設 injector 數；若執行時有 -i，會被覆蓋
+# 預設 slave 數；若執行時指定 --min-slaves（或 legacy -i）會被覆蓋
 slaves:
   parallelism: 5
 

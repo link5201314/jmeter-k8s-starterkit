@@ -20,8 +20,14 @@
       </div>
       <div class="col-md-4"></div>
       <div class="col-md-3">
-        <label class="form-label">Injectors</label>
-        <input class="form-control" type="number" name="injectors" value="2" min="1">
+        <label class="form-label">Min Slaves</label>
+        <input class="form-control" type="number" name="min_slaves" value="2" min="1">
+        <div class="form-text">最少啟動的 JMeter slaves 數量</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Max Threads</label>
+        <input class="form-control" type="number" name="max_threads" value="0" min="0">
+        <div class="form-text">每個 slave 可承載的最大 threads，0 表示僅使用 Min Slaves</div>
       </div>
       <div class="col-md-3">
         <label class="form-label">Helm Env</label>
@@ -36,11 +42,11 @@
         <label class="form-label">Helm Release</label>
         <input class="form-control" name="helm_release" value="jmeter-runtime">
       </div>
-      <div class="col-md-3 d-flex align-items-end">
-        <div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="copy_csv" checked> CSV</div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="copy_module"> Module</div>
-          <div class="form-check"><input class="form-check-input" type="checkbox" name="enable_report" checked> Report</div>
+      <div class="col-md-12 d-flex align-items-end">
+        <div class="d-flex flex-wrap gap-3">
+          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="copy_csv" checked> CSV</div>
+          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="copy_module"> Module</div>
+          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="enable_report" checked> Report</div>
         </div>
       </div>
       <div class="col-12"><button class="btn btn-primary">啟動測試</button></div>

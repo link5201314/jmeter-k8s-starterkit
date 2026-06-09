@@ -30,7 +30,7 @@ slave:
       memory: "1536Mi"
       cpu: "1500m"
 
-# 預設 injector 數；若 start_test.sh 有 -i，會被 run-values 覆蓋
+# 預設 slave 數；若 start_test.sh 指定 --min-slaves（或 legacy -i）會被 run-values 覆蓋
 slaves:
   parallelism: 5
 
