@@ -735,6 +735,27 @@ jmeter-k8s-starterkit/
 
 建議未來可加參數（如 `--thread-distribution-policy`）做策略切換，兼顧「總壓力精準」與「每個 slave 都參與」兩種需求。
 
+若要讓不同 slave 跑不同 thread 數，且仍維持 master remote（`--remotestart`）模式，建議採用以下可行作法：
+
+- 核心限制：單次 remote 啟動時，master 下發的 `-G` 為全域參數，無法直接對不同 slave 發不同值。
+- 建議方案：改為「參數先全域下發，slave 再依自身身分（pod 名稱/hostname）選取對應值」。
+
+實作步驟（建議最小改動路徑）：
+
+1. 在專案目錄新增 per-slave 對照檔（例如 CSV/JSON），內容包含 `slave_id -> thread/rampup/duration`。
+2. `start_test.sh` 在啟動前，將此對照檔複製到所有 slave pod（類似既有 JMX/CSV 上傳流程）。
+3. 在 JMX 加入 setUp Thread Group（建議 JSR223 Groovy）：
+  - 讀取本機 `hostname` 或 pod 名稱
+  - 從對照檔找出該 slave 專屬參數
+  - 寫入本地 engine 可讀取的屬性（供後續 Thread Group 取用）
+4. 後續 Thread Group 仍用 `__P(...)`/屬性引用，但實際值由各 slave 的 setUp 邏輯決定。
+
+此作法的優點：
+
+- 保持 master remote 架構（統一啟停、集中流程不變）
+- 可讓各 slave 採用不同 thread 配置
+- 不需改成每台 slave 各自獨立啟動測試
+
 ---
 
 ### 4) 報表 metadata 自動注入（搭配 `-r`）
