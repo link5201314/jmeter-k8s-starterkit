@@ -252,6 +252,18 @@ helm upgrade --install perf-stack k8s/helm \
   --webapp-host jmeter-web-dr2.mgnt.mvdis.gov.tw \
   --telegraf-cluster-rbac false
 
+# lab環境完整範例(視情況決定telegraf-cluster-rbac)
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env lab \
+  --report-host report1-dr.mgnt.mvdis.gov.tw \
+  --grafana-host grafana2-dr.mgnt.mvdis.gov.tw \
+  --webapp-host jmeter-web2-dr.mgnt.mvdis.gov.tw \
+  --master-node-label pt-group=group-1-m \
+  --slave-node-label pt-group=group-1 \
+  --telegraf-cluster-rbac false
+```
+
 # dr環境完整範例(視情況決定telegraf-cluster-rbac)
 ./deploy_perf_stack.sh \
   -n performance-test1 \
@@ -270,6 +282,24 @@ helm upgrade --install perf-stack k8s/helm \
 
 - `/workspace/scenario`：保存專案 JMX、`.env`、`report-meta.env` 與 `scenario/dataset`
 - `/workspace/webapp/data`：保存 `users.json`、`upload_owners.json`、`webapp/data/secrets/*`
+
+### 設定管理頁面生效與重啟行為（重要）
+
+請特別注意：webapp container 內的 `/workspace` 內容主要來自 **webapp image build 當下**打包進去的檔案；目前持久化掛載只涵蓋上面兩個目錄（`/workspace/scenario`、`/workspace/webapp/data`）。
+
+這代表：
+
+- 你在本地 workspace 修改 `config/*`、`k8s/helm/environments/values/*` 等檔案，不會自動改變「已在 cluster 執行中」的 webapp 行為。
+- 你在 webapp「設定管理」頁面修改到非持久化路徑的檔案時，變更可能只存在於當前 Pod/container。
+- 一旦 webapp Pod 重建/重啟（例如 rollout restart、節點漂移、升版），這類變更可能會回到 image 內原始內容（看起來像被 reset）。
+
+若要讓這類設定真正穩定生效，建議流程：
+
+1. 在 repo 內更新目標設定檔。
+2. 重 build 並推送新的 webapp image。
+3. `helm upgrade` 指向新 image tag（或 digest），再 rollout。
+
+若希望「設定管理」頁面的特定設定可跨重啟保留，需另外把對應路徑改為 PVC/ConfigMap/Secret 掛載，不建議只依賴 container 可寫層。
 
 首次部署且 `webapp/data` PVC 為空時，webapp 需要 bootstrap admin（由 Secret 注入）：
 
