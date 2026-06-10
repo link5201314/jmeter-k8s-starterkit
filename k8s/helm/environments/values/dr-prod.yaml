@@ -9,11 +9,11 @@ global:
       tag: "5.6.3-ctg-2"
     resources:
       requests:
-        memory: "3072Mi"
-        cpu: "1000m"
+        memory: "21504Mi"
+        cpu: "3000m"
       limits:
-        memory: "4096Mi"
-        cpu: "2000m"
+        memory: "28672Mi"
+        cpu: "6000m"
   slave:
     enabled: false
     image:
@@ -21,10 +21,10 @@ global:
       tag: "5.6.3-ctg-2"
     resources:
       requests:
-        memory: "1536Mi"
+        memory: "3840Mi"
         cpu: "1000m"
       limits:
-        memory: "2048Mi"
+        memory: "5120Mi"
         cpu: "2000m"
   pvc:
     enabled: true
