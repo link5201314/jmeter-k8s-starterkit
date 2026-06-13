@@ -42,7 +42,7 @@ usage()
     logit "INFO" "--min-slaves <number> minimum JMeter slaves to start"
     logit "INFO" "--max-threads <number> max total threads per slave for auto scaling"
   logit "INFO" "-r flag to enable report generation at the end of the test"
-  logit "INFO" "-E <env> test environment (e.g. prod/uat/sit/pt)"
+    logit "INFO" "-E <env> (deprecated) report Environment 改由執行參數自動組成"
   logit "INFO" "-V <versions> app versions, ';' separated (e.g. tip-web=1.0.1;gemfire=2.2.3)"
   logit "INFO" "-N <note> free-form notes"
   logit "INFO" "-F <file> meta env file (REPORT_ENV/REPORT_VERSIONS/REPORT_NOTE)"
@@ -154,6 +154,9 @@ if ! [[ "${max_threads}" =~ ^[0-9]+$ ]]; then
     logit "ERROR" "Invalid --max-threads: ${max_threads} (must be integer >= 0)"
     exit 1
 fi
+
+# Environment metadata in report is always derived from runtime parameters.
+report_env="Namespace=${namespace}, Min Slaves=${min_slaves}, Max Threads=${max_threads}, HelmEnv=${helm_env}"
 
 # Quick preflight warnings for common report accessibility issues.
 # 檢查 report-server 與 PVC 是否在同一 namespace
@@ -281,7 +284,6 @@ if [ -n "${meta_file}" ]; then
             source "${PREPROCESSED_REPORT_META_FILE}"
             set +a
             rm -f "${PREPROCESSED_REPORT_META_FILE}"
-            [ -n "${JMETERREPORT_REPORT_ENV}" ] && report_env="${JMETERREPORT_REPORT_ENV}"
             [ -n "${JMETERREPORT_REPORT_VERSIONS}" ] && report_versions="${JMETERREPORT_REPORT_VERSIONS}"
             [ -n "${JMETERREPORT_REPORT_NOTE}" ] && report_note="${JMETERREPORT_REPORT_NOTE}"
         fi
@@ -475,6 +477,9 @@ for elem in root.iter():
     if not target_name:
         continue
 
+    if elem.attrib.get("enabled") == "false":
+        continue
+
     target_prop = None
     for child in elem:
         if child.tag == "stringProp" and child.attrib.get("name") == target_name:
@@ -542,6 +547,8 @@ for idx in range(target_slaves):
         elif tag == "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
             target_name = "TargetLevel"
         if not target_name:
+            continue
+        if elem.attrib.get("enabled") == "false":
             continue
         for child in elem:
             if child.tag == "stringProp" and child.attrib.get("name") == target_name:
@@ -1067,6 +1074,43 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
     echo "    [ -z \"\${env_val}\" ] && env_val=\"(empty)\""
     echo "    [ -z \"\${ver_val}\" ] && ver_val=\"(empty)\""
     echo "    [ -z \"\${note_val}\" ] && note_val=\"(empty)\""
+    
+    # Build env_params_rows by reading .env file content directly
+    env_params_rows=""
+    if [ -f "scenario/${jmx_dir}/.env" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Remove Windows line endings if present
+            line=$(printf '%s' "$line" | tr -d '\r')
+            
+            # Skip comments and empty lines
+            [[ "$line" =~ ^[[:space:]]*# ]] || [ -z "$line" ] && continue
+            
+            # Extract key and value
+            if [[ "$line" =~ ^[[:space:]]*([^=]+)[[:space:]]*=(.*)$ ]]; then
+                key="${BASH_REMATCH[1]}"
+                value="${BASH_REMATCH[2]}"
+                
+                # Trim whitespace
+                key=$(echo "$key" | xargs)
+                value=$(echo "$value" | xargs)
+                
+                # HTML escape the value
+                escaped_val=$(printf '%s' "$value" | awk '{gsub(/&/,"\\&amp;"); gsub(/</,"\\&lt;"); gsub(/>/,"\\&gt;"); gsub(/"/,"\\&quot;"); printf "%s", $0}')
+                
+                env_params_rows="${env_params_rows}<tr><td>${key}</td><td>${escaped_val}</td></tr>"
+            fi
+        done < "scenario/${jmx_dir}/.env"
+    fi
+    
+    # Default message if no env parameters
+    if [ -z "${env_params_rows}" ]; then
+        env_params_rows="<tr><td colspan=2 style=\"text-align:center;\">(no env parameters)</td></tr>"
+    fi
+    
+    # Output the static env_params_rows to the script (with proper escaping)
+    # Need to escape double quotes and backslashes for the echo statement
+    escaped_rows=$(printf '%s' "$env_params_rows" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+    echo "    env_params_rows=\"${escaped_rows}\""
     echo "    inject_file=\$(mktemp)"
     echo "    echo \"[DEBUG] inject_file=\${inject_file}\""
     echo "    cat > \"\${inject_file}\" <<HTML"
@@ -1082,6 +1126,24 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
     echo "          <tr><td>App Versions</td><td>\${ver_val}</td></tr>"
     echo "          <tr><td>Notes</td><td>\${note_val}</td></tr>"
     echo "        </table>"
+    echo "      </div>"
+    echo "    </div>"
+    echo "  </div>"
+    echo "</div>"
+    echo "<div class=\"row\">"
+    echo "  <div class=\"col-lg-12\">"
+    echo "    <div class=\"panel panel-default\">"
+    echo "      <div class=\"panel-heading\" style=\"text-align:center;\">"
+    echo "        <a data-toggle=\"collapse\" href=\"#env-parameter-collapse\" role=\"button\" aria-expanded=\"false\" aria-controls=\"env-parameter-collapse\" style=\"display:block; text-decoration:none; color:inherit;\">"
+    echo "          <p class=\"dashboard-title\" style=\"margin:0;\">Env Parameter (Click to Expand)</p>"
+    echo "        </a>"
+    echo "      </div>"
+    echo "      <div id=\"env-parameter-collapse\" class=\"panel-collapse collapse\">"
+    echo "        <div class=\"panel-body\">"
+    echo "          <table class=\"table table-bordered table-condensed\">"
+    echo "            \${env_params_rows}"
+    echo "          </table>"
+    echo "        </div>"
     echo "      </div>"
     echo "    </div>"
     echo "  </div>"

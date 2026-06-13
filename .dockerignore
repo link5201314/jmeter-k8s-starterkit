@@ -1,5 +1,6 @@
 .git
 .github
+docs/
 report/
 webapp/data/*
 !webapp/data/.gitkeep

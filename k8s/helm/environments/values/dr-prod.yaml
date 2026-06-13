@@ -74,8 +74,8 @@ grafana:
 webapp:
   enabled: true
   image:
-    repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.06.10-145025-lab-redeploy"
+    repository: docker.io/isaac0815/jmeter-webapp
+    tag: "2026.06.14-003654-EnvParamCollapse"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:
