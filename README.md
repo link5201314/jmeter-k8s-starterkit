@@ -313,6 +313,13 @@ dr-prod 可用：
 kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/webapp-bootstrap-admin-secret.yaml
 ```
 
+> **注意**：Secret 與 ConfigMap 的內容皆以環境變數注入容器，容器啟動後不會自動熱更新。
+> 每次 `apply` 修改後，必須重啟 webapp 才能讓新值生效：
+> ```bash
+> kubectl -n <namespace> rollout restart deploy/jmeter-webapp
+> kubectl -n <namespace> rollout status deploy/jmeter-webapp --timeout=240s
+> ```
+
 另外，webapp 的 Logs 頁面目前也支援透過 `ConfigMap` 注入 JMeter log 忽略規則，避免只為了調整過濾條件而重打 image。
 
 - lab：`k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml`
@@ -342,7 +349,7 @@ helm upgrade --install perf-stack k8s/helm \
 
 > 原因：webapp deployment 會透過 `envFrom.configMapRef` 讀取 `jmeter-webapp-log-filter`。若先升版、`ConfigMap` 尚未存在，Pod 建立時可能因缺少參照來源而失敗。
 
-若之後只是調整忽略規則內容，而沒有修改 Helm chart/template，通常不需要再做 `helm upgrade`；只要重新套用 `ConfigMap` 並重啟 webapp 即可：
+若之後只是調整忽略規則內容，而沒有修改 Helm chart/template，通常不需要再做 `helm upgrade`；只要重新套用 `ConfigMap` 並重啟 webapp 即可（ConfigMap 以 `envFrom` 注入，Pod 不重啟不會讀到新值）：
 
 ```bash
 kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml

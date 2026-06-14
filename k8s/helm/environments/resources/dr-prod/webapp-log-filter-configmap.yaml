@@ -7,6 +7,8 @@ data:
     WARN StatusConsoleListener The use of package scanning to locate plugins is deprecated and will be removed in a future release
     SSLManager: Keystore file not found, loading empty keystore
     HTTPSamplerBase: Existing CookieManager HTTP Cookie Manager superseded by HTTP Cookie Manager
+    LoggingCSSParseErrorHandler: [1:1890] Deprecated property name '*display'
+    Log4j shutdown hook because JVM is shutting down. Using SimpleLogger
   WEBAPP_IGNORED_JMETER_INFO_PATTERNS: |
     DataStrippingSampleSender: Using DataStrippingSampleSender for this run with stripAlsoOnError: true
     StandardJMeterEngine: Thread will continue on error
