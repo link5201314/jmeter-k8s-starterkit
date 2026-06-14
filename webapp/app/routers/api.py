@@ -48,6 +48,14 @@ from webapp.app.services.oracle_flashback_service import (
     restore_restore_point,
     load_ssh_config_from_k8s_secret,
 )
+from webapp.app.services.dataset_v2_service import (
+    build_all_dataset_items,
+    build_filter_options,
+    build_project_dataset_items,
+    build_unattached_dataset_items,
+    normalize_filter,
+    pick_dataset_target_name,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_authenticated)])
 
@@ -101,6 +109,27 @@ def _list_projects() -> list[str]:
             continue
         result.append(path.name)
     return result
+
+
+def _build_dataset_v2_items_for_filter(selected_filter: str, projects: list[str], owner_section: dict) -> list[dict]:
+    if selected_filter == "All":
+        return build_all_dataset_items(DATASET_DIR, owner_section)
+    if selected_filter == "Unattached":
+        return build_unattached_dataset_items(
+            dataset_dir=DATASET_DIR,
+            projects=projects,
+            scenario_dir=SCENARIO_DIR,
+            owner_section=owner_section,
+        )
+
+    project_dir = ensure_subpath(SCENARIO_DIR, SCENARIO_DIR / selected_filter)
+    if not project_dir.exists() or not project_dir.is_dir():
+        raise HTTPException(404, f"Project directory not found: {selected_filter}")
+    return build_project_dataset_items(
+        project_dir=project_dir,
+        dataset_dir=DATASET_DIR,
+        owner_section=owner_section,
+    )
 
 
 def _safe_project_file(project: str, filename: str) -> Path:
@@ -261,6 +290,18 @@ def _assert_overwrite_allowed(target_exists: bool, confirm_overwrite: bool, user
         raise HTTPException(403, "非 Admin 不可覆蓋既有檔案（缺少上傳者資訊）")
     if owner_name != current_user:
         raise HTTPException(403, "非 Admin 不可覆蓋他人上傳的檔案")
+
+
+def _assert_delete_allowed(user: dict, owner: dict | None) -> None:
+    if can_manage_users(user):
+        return
+
+    current_user = _normalized_username(user)
+    owner_name = str((owner or {}).get("owner", "")).strip().lower()
+    if not owner_name:
+        raise HTTPException(403, "非 Admin 不可刪除既有檔案（缺少上傳者資訊）")
+    if owner_name != current_user:
+        raise HTTPException(403, "非 Admin 不可刪除他人上傳的檔案")
 
 
 def _kubectl_json(namespace: str, args: list[str]) -> dict | list | None:
@@ -888,6 +929,194 @@ def download_datasets_zip(project: str = "Others"):
             archive.write(path, arcname=path.name)
 
     return FileResponse(str(zip_path), filename=zip_filename)
+
+
+@router.get("/datasets-v2/referencing-projects", dependencies=[Depends(require_project_management)])
+def dataset_v2_referencing_projects(name: str):
+    """Return list of project names whose JMX scripts reference the given dataset file via a valid CSVDataSet path."""
+    from webapp.app.services.dataset_v2_service import scan_project_csv_references
+
+    if not name.endswith(".csv"):
+        raise HTTPException(400, "Only .csv files are allowed")
+
+    projects = _list_projects()
+    referencing: list[str] = []
+
+    for project in projects:
+        project_dir = SCENARIO_DIR / project
+        if not project_dir.is_dir():
+            continue
+        refs = scan_project_csv_references(project_dir)
+        for ref in refs:
+            if ref.path_valid and ref.dataset_name == name:
+                referencing.append(project)
+                break
+
+    return {"projects": referencing}
+
+
+@router.get("/datasets-v2/options", dependencies=[Depends(require_project_management)])
+def dataset_v2_options():
+    projects = _list_projects()
+    return {
+        "filters": build_filter_options(projects),
+        "default_filter": "All",
+    }
+
+
+@router.get("/datasets-v2/list", dependencies=[Depends(require_project_management)])
+def dataset_v2_list(request: Request, filter: str = "All"):
+    require_project_management(request)
+
+    projects = _list_projects()
+    selected_filter = normalize_filter(filter, projects)
+    owner_store = _read_upload_owner_store()
+    owner_section = owner_store.get("dataset", {}) if isinstance(owner_store, dict) else {}
+    items = _build_dataset_v2_items_for_filter(selected_filter, projects, owner_section)
+
+    return {
+        "selected_filter": selected_filter,
+        "filters": build_filter_options(projects),
+        "items": items,
+    }
+
+
+@router.get("/datasets-v2/download-zip", dependencies=[Depends(require_project_management)])
+def dataset_v2_download_zip(request: Request, filter: str = "All"):
+    require_project_management(request)
+
+    projects = _list_projects()
+    selected_filter = normalize_filter(filter, projects)
+    owner_store = _read_upload_owner_store()
+    owner_section = owner_store.get("dataset", {}) if isinstance(owner_store, dict) else {}
+    items = _build_dataset_v2_items_for_filter(selected_filter, projects, owner_section)
+
+    files: list[Path] = []
+    seen: set[str] = set()
+    for item in items:
+        name = str(item.get("name", "")).strip()
+        if not name.endswith(".csv"):
+            continue
+
+        safe_key = name.lower()
+        if safe_key in seen:
+            continue
+
+        target = ensure_subpath(DATASET_DIR, DATASET_DIR / name)
+        if not target.exists() or not target.is_file():
+            continue
+
+        seen.add(safe_key)
+        files.append(target)
+
+    if not files:
+        raise HTTPException(404, "目前篩選條件沒有可下載的 dataset")
+
+    safe_filter = selected_filter.lower().replace("/", "_").replace(" ", "_")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    zip_filename = f"datasets-v2-{safe_filter}-{timestamp}.zip"
+    zip_path = REPO_ROOT / "webapp" / "tmp" / zip_filename
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in files:
+            archive.write(path, arcname=path.name)
+
+    return FileResponse(str(zip_path), filename=zip_filename)
+
+
+@router.post("/datasets-v2/upload-general", dependencies=[Depends(require_project_management)])
+async def dataset_v2_upload_general(
+    request: Request,
+    file: UploadFile = File(...),
+    confirm_overwrite: bool = Form(False),
+):
+    user = require_project_management(request)
+
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(400, "Only .csv files are allowed")
+
+    target_name = file.filename.strip()
+    target = ensure_subpath(DATASET_DIR, DATASET_DIR / target_name)
+    owner_key = target_name.lower()
+    owner_store = _read_upload_owner_store()
+    existing_owner = _owner_record(owner_store, "dataset", owner_key)
+    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(await file.read())
+
+    _set_owner_record(owner_store, "dataset", owner_key, str(user.get("username", "")))
+    _write_upload_owner_store(owner_store)
+
+    return {
+        "ok": True,
+        "name": target_name,
+        "path": str(target.relative_to(REPO_ROOT)),
+        "modified_at": _path_modified_text(target),
+    }
+
+
+@router.post("/datasets-v2/upload-item", dependencies=[Depends(require_project_management)])
+async def dataset_v2_upload_item(
+    request: Request,
+    item_name: str = Form(...),
+    file: UploadFile = File(...),
+    confirm_overwrite: bool = Form(False),
+):
+    user = require_project_management(request)
+
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(400, "Only .csv files are allowed")
+
+    target_name = pick_dataset_target_name(item_name, file.filename)
+    if not target_name or not target_name.endswith(".csv"):
+        raise HTTPException(400, "Invalid dataset target name")
+
+    target = ensure_subpath(DATASET_DIR, DATASET_DIR / target_name)
+    owner_key = target_name.lower()
+    owner_store = _read_upload_owner_store()
+    existing_owner = _owner_record(owner_store, "dataset", owner_key)
+    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(await file.read())
+
+    _set_owner_record(owner_store, "dataset", owner_key, str(user.get("username", "")))
+    _write_upload_owner_store(owner_store)
+
+    return {
+        "ok": True,
+        "name": target_name,
+        "path": str(target.relative_to(REPO_ROOT)),
+        "modified_at": _path_modified_text(target),
+    }
+
+
+@router.delete("/datasets-v2/{name}", dependencies=[Depends(require_project_management)])
+def dataset_v2_delete(name: str, request: Request):
+    user = require_project_management(request)
+
+    if not name.endswith(".csv"):
+        raise HTTPException(400, "Only .csv files are allowed")
+
+    target = ensure_subpath(DATASET_DIR, DATASET_DIR / name)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(404, "Dataset file not found")
+
+    owner_store = _read_upload_owner_store()
+    owner_key = name.strip().lower()
+    existing_owner = _owner_record(owner_store, "dataset", owner_key)
+    _assert_delete_allowed(user, existing_owner)
+
+    target.unlink(missing_ok=False)
+
+    section = owner_store.get("dataset")
+    if isinstance(section, dict) and owner_key in section:
+        section.pop(owner_key, None)
+        _write_upload_owner_store(owner_store)
+
+    return {"ok": True, "name": name}
 
 
 @router.get("/reports/download-index")

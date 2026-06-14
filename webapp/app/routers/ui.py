@@ -37,6 +37,7 @@ from webapp.app.services.auth_service import (
 from webapp.app.services.file_service import ensure_subpath
 from webapp.app.services.report_service import discover_reports
 from webapp.app.services.db_restore_service import list_restore_envs
+from webapp.app.services.dataset_v2_service import build_filter_options, normalize_filter
 
 router = APIRouter()
 templates = Jinja2Templates(directory="webapp/app/templates")
@@ -382,6 +383,54 @@ def datasets_page(request: Request, file: Optional[str] = None, project: Optiona
                 "datasets": datasets,
                 "projects": projects,
                 "selected_project": selected_project,
+                "selected_dataset": selected_dataset,
+                "preview_headers": preview_headers,
+                "preview_rows": preview_rows,
+                "preview_error": preview_error,
+                "preview_truncated": preview_truncated,
+            },
+        ),
+    )
+
+
+@router.get("/datasets-v2")
+def datasets_v2_page(request: Request, file: Optional[str] = None, filter: Optional[str] = "All"):
+    user = _project_manage_required(request)
+    if isinstance(user, Response):
+        return user
+
+    projects = _list_projects()
+    selected_filter = normalize_filter(filter or "All", projects)
+    selected_dataset = ""
+    preview_headers: list[str] = []
+    preview_rows: list[list[str]] = []
+    preview_error = ""
+    preview_truncated = False
+
+    dataset_dir = SCENARIO_DIR / "dataset"
+    if file:
+        selected_dataset = file
+        try:
+            selected_path = ensure_subpath(dataset_dir, dataset_dir / file)
+            if selected_path.suffix.lower() != ".csv":
+                preview_error = "只支援瀏覽 .csv 檔案"
+            elif not selected_path.exists() or not selected_path.is_file():
+                preview_error = f"找不到檔案：{file}"
+            else:
+                preview_headers, preview_rows, preview_truncated = _read_csv_preview(selected_path, max_rows=200)
+        except ValueError:
+            preview_error = "不合法的檔案路徑"
+        except Exception as exc:
+            preview_error = f"CSV 讀取失敗：{exc}"
+
+    return templates.TemplateResponse(
+        "datasets_v2.html",
+        _template_context(
+            request,
+            {
+                "projects": projects,
+                "filters": build_filter_options(projects),
+                "selected_filter": selected_filter,
                 "selected_dataset": selected_dataset,
                 "preview_headers": preview_headers,
                 "preview_rows": preview_rows,

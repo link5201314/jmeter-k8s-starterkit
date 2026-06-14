@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Dataset維護</div>
+  <div class="card-body">
+    <form id="dataset-v2-upload-form" class="row g-2" enctype="multipart/form-data">
+      <div class="col-md-4">
+        <label class="form-label mb-1">專案過濾條件</label>
+        <select class="form-select" id="dataset-v2-filter-select" name="filter">
+          {% for item in filters %}
+          <option value="{{ item }}" {{ 'selected' if selected_filter == item else '' }}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5 {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-file-col">
+        <label class="form-label mb-1">CSV 檔案</label>
+        <input id="dataset-v2-upload-file" class="form-control" type="file" name="file" accept=".csv">
+      </div>
+      <div class="col-md-3 d-flex align-items-end {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-btn-col">
+        <button id="dataset-v2-upload-btn" class="btn btn-primary w-100">上傳</button>
+      </div>
+      <div class="col-12 {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-hint-col">
+        <div class="form-text mb-2">只有過濾條件為 All 時可使用此上傳功能。</div>
+      </div>
+      <div class="col-12 {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-state-col">
+        <span id="dataset-v2-upload-state" class="badge text-bg-secondary">尚未上傳</span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span id="dataset-v2-list-title">目前 dataset 清單（{{ selected_filter }}）</span>
+    <div class="d-flex gap-2">
+      <a id="dataset-v2-download-zip-btn" href="/api/datasets-v2/download-zip?filter={{ selected_filter | urlencode }}" class="btn btn-sm btn-outline-primary">下載目前篩選 ZIP</a>
+      <button id="dataset-v2-refresh-btn" class="btn btn-sm btn-outline-primary">重新整理</button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead>
+          <tr>
+            <th>檔名</th>
+            <th>狀態</th>
+            <th>最新上傳時間</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="dataset-v2-table-body">
+          <tr><td colspan="4" class="text-muted text-center">讀取中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mt-4">
+  <div class="card-header">CSV 內容預覽{% if selected_dataset %}：{{ selected_dataset }}{% endif %}</div>
+  <div class="card-body">
+    {% if preview_error %}
+      <div class="alert alert-warning mb-0">{{ preview_error }}</div>
+    {% elif selected_dataset and preview_headers %}
+      <div class="row g-2 mb-3">
+        <div class="col-md-6">
+          <input id="csv-filter-input" class="form-control" placeholder="關鍵字搜尋（前端過濾目前預覽列）" />
+        </div>
+        <div class="col-md-6 text-md-end">
+          <span id="csv-filter-count" class="text-muted"></span>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table id="csv-preview-table" class="table table-sm table-striped table-bordered">
+          <thead>
+            <tr>
+              {% for h in preview_headers %}
+              <th>{{ h }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview_rows %}
+            <tr>
+              {% for cell in row %}
+              <td>{{ cell }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if preview_truncated %}
+      <div class="text-muted">僅顯示前 200 筆資料列。</div>
+      {% endif %}
+    {% elif selected_dataset %}
+      <div class="text-muted">此檔案沒有可顯示的內容。</div>
+    {% else %}
+      <div class="text-muted">請先從上方清單點選一個 CSV 檔案。</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  (() => {
+    const uploadForm = document.getElementById('dataset-v2-upload-form');
+    const filterSelect = document.getElementById('dataset-v2-filter-select');
+    const uploadFile = document.getElementById('dataset-v2-upload-file');
+    const uploadBtn = document.getElementById('dataset-v2-upload-btn');
+    const uploadState = document.getElementById('dataset-v2-upload-state');
+    const uploadStateCol = document.getElementById('dataset-v2-upload-state-col');
+    const uploadFileCol = document.getElementById('dataset-v2-upload-file-col');
+    const uploadBtnCol = document.getElementById('dataset-v2-upload-btn-col');
+    const uploadHintCol = document.getElementById('dataset-v2-upload-hint-col');
+    const tableBody = document.getElementById('dataset-v2-table-body');
+    const refreshBtn = document.getElementById('dataset-v2-refresh-btn');
+    const listTitle = document.getElementById('dataset-v2-list-title');
+
+    const nowText = () => new Date().toLocaleString('zh-TW', { hour12: false });
+
+    const setState = (className, text) => {
+      uploadState.className = `badge ${className}`;
+      uploadState.textContent = text;
+    };
+
+    const escapeHtml = (text) => String(text || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+    const selectedFilter = () => (filterSelect?.value || 'All').trim() || 'All';
+
+    async function fetchReferencingProjects(fileName) {
+      try {
+        const resp = await fetch(`/api/datasets-v2/referencing-projects?name=${encodeURIComponent(fileName)}`);
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return Array.isArray(data.projects) ? data.projects : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function buildOverwriteConfirmMessage(fileName, referencingProjects) {
+      let msg = `檔案 ${fileName} 已存在，確定覆蓋嗎？`;
+      if (referencingProjects.length > 0) {
+        msg += `\n\n此檔案目前被以下專案引用：\n${referencingProjects.map((p) => `  • ${p}`).join('\n')}`;
+      }
+      return msg;
+    }
+
+    const toggleGeneralUploadByFilter = () => {
+      const isAll = selectedFilter() === 'All';
+      uploadFileCol.style.display = isAll ? '' : 'none';
+      uploadBtnCol.style.display = isAll ? '' : 'none';
+      uploadHintCol.style.display = isAll ? '' : 'none';
+      if (uploadStateCol) {
+        uploadStateCol.style.display = isAll ? '' : 'none';
+      }
+      if (uploadFile) {
+        uploadFile.required = isAll;
+        uploadFile.disabled = !isAll;
+      }
+      if (uploadBtn) {
+        uploadBtn.disabled = !isAll;
+      }
+    };
+
+    async function refreshList() {
+      const currentFilter = selectedFilter();
+      tableBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">讀取中...</td></tr>';
+      if (listTitle) {
+        listTitle.textContent = `目前 dataset 清單（${currentFilter}）`;
+      }
+
+      try {
+        const response = await fetch(`/api/datasets-v2/list?filter=${encodeURIComponent(currentFilter)}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const items = Array.isArray(payload.items) ? payload.items : [];
+
+        if (!items.length) {
+          tableBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">尚無資料</td></tr>';
+          return;
+        }
+
+        const rows = items.map((item, idx) => {
+          const name = escapeHtml(item.name || '-');
+          const status = escapeHtml(item.status || '-');
+          const latestUploadAt = escapeHtml(item.latest_upload_at || '-');
+          const isInvalidPath = item.status === '路徑不正確';
+          const canUpload = !!item.can_upload;
+          const showDelete = !!item.show_delete;
+          const exists = !!item.exists;
+
+          const statusClass = isInvalidPath ? 'text-danger fw-semibold' : '';
+          const uploadBtn = canUpload
+            ? `<button class="btn btn-sm btn-outline-primary dataset-v2-upload-item-btn" data-item-name="${name}" data-exists="${exists ? '1' : '0'}" data-input-id="dataset-v2-row-file-${idx}">上傳</button>
+               <input id="dataset-v2-row-file-${idx}" class="d-none dataset-v2-row-file-input" type="file" accept=".csv" data-item-name="${name}">`
+            : '<span class="text-muted">不可上傳</span>';
+
+          const deleteBtn = showDelete
+            ? `<button class="btn btn-sm btn-outline-danger dataset-v2-delete-btn" data-item-name="${name}">刪除</button>`
+            : '';
+
+          const refQueryBtn = currentFilter !== 'Unattached'
+            ? `<button class="btn btn-sm btn-outline-secondary dataset-v2-ref-query-btn" data-item-name="${name}">引用查詢</button>`
+            : '';
+
+          return `
+            <tr>
+              <td>
+                <a href="/datasets-v2?filter=${encodeURIComponent(currentFilter)}&file=${encodeURIComponent(item.name || '')}" class="text-decoration-none">${name}</a>
+              </td>
+              <td class="${statusClass}">${status}</td>
+              <td>${latestUploadAt}</td>
+              <td>
+                <div class="d-flex flex-wrap gap-2">
+                  <a href="/api/datasets/download?name=${encodeURIComponent(item.name || '')}" class="btn btn-sm btn-outline-secondary">下載</a>
+                  ${uploadBtn}
+                  ${deleteBtn}
+                  ${refQueryBtn}
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+
+        tableBody.innerHTML = rows.join('');
+      } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">讀取失敗：${escapeHtml(error.message || error)}</td></tr>`;
+      }
+    }
+
+    async function uploadGeneral(event) {
+      event.preventDefault();
+      if (selectedFilter() !== 'All') {
+        return;
+      }
+      if (!uploadFile?.files?.length) {
+        setState('text-bg-warning', '請先選擇 .csv 檔案');
+        return;
+      }
+
+      const selected = uploadFile.files[0];
+      const formData = new FormData();
+      formData.append('file', selected);
+
+      const shouldConfirm = await fetch(`/api/datasets/download?name=${encodeURIComponent(selected.name)}`)
+        .then((resp) => resp.ok)
+        .catch(() => false);
+      if (shouldConfirm) {
+        const refs = await fetchReferencingProjects(selected.name);
+        const ok = window.confirm(buildOverwriteConfirmMessage(selected.name, refs));
+        if (!ok) {
+          return;
+        }
+        formData.append('confirm_overwrite', 'true');
+      } else {
+        formData.append('confirm_overwrite', 'false');
+      }
+
+      uploadBtn.disabled = true;
+      setState('text-bg-warning', '上傳中...');
+
+      try {
+        const response = await fetch('/api/datasets-v2/upload-general', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const payload = await response.json();
+            detail = payload.detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+
+        setState('text-bg-success', `上傳成功 ${nowText()}`);
+        uploadForm.reset();
+        toggleGeneralUploadByFilter();
+        await refreshList();
+      } catch (error) {
+        setState('text-bg-danger', `上傳失敗：${error.message}`);
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    }
+
+    async function uploadItem(itemName, fileInput, targetExists) {
+      if (!fileInput?.files?.length) {
+        setState('text-bg-warning', '請先選擇要上傳的 .csv 檔案');
+        return;
+      }
+
+      const selectedFile = fileInput.files[0];
+      if ((selectedFile?.name || '') !== itemName) {
+        const ok = window.confirm(
+          `欲上傳檔案與預期檔名不同，是否確定上傳?\n\n預期檔名: ${itemName}\n選擇檔名: ${selectedFile?.name || ''}`
+        );
+        if (!ok) {
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('item_name', itemName);
+      formData.append('file', selectedFile);
+
+      if (targetExists) {
+        const refs = await fetchReferencingProjects(itemName);
+        const ok = window.confirm(buildOverwriteConfirmMessage(itemName, refs));
+        if (!ok) {
+          return;
+        }
+        formData.append('confirm_overwrite', 'true');
+      } else {
+        formData.append('confirm_overwrite', 'false');
+      }
+
+      setState('text-bg-warning', `上傳 ${itemName} 中...`);
+
+      try {
+        const response = await fetch('/api/datasets-v2/upload-item', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const payload = await response.json();
+            detail = payload.detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+
+        setState('text-bg-success', `上傳成功 ${nowText()}`);
+        await refreshList();
+      } catch (error) {
+        setState('text-bg-danger', `上傳失敗：${error.message}`);
+      }
+    }
+
+    async function deleteItem(itemName) {
+      const first = window.confirm(`確定要刪除 ${itemName} 嗎？`);
+      if (!first) return;
+      const second = window.confirm(`再次確認：刪除 ${itemName} 後無法復原。`);
+      if (!second) return;
+
+      setState('text-bg-warning', `刪除 ${itemName} 中...`);
+      try {
+        const response = await fetch(`/api/datasets-v2/${encodeURIComponent(itemName)}`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const payload = await response.json();
+            detail = payload.detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+
+        setState('text-bg-success', `刪除成功 ${nowText()}`);
+        await refreshList();
+      } catch (error) {
+        setState('text-bg-danger', `刪除失敗：${error.message}`);
+      }
+    }
+
+    document.addEventListener('click', async (event) => {
+      const uploadBtnEl = event.target.closest('.dataset-v2-upload-item-btn');
+      if (uploadBtnEl) {
+        const inputId = uploadBtnEl.getAttribute('data-input-id') || '';
+        const input = document.getElementById(inputId);
+        if (input) {
+          input.click();
+        }
+        return;
+      }
+
+      const deleteBtnEl = event.target.closest('.dataset-v2-delete-btn');
+      if (deleteBtnEl) {
+        const itemName = deleteBtnEl.getAttribute('data-item-name') || '';
+        if (itemName) {
+          await deleteItem(itemName);
+        }
+        return;
+      }
+
+      const refQueryBtnEl = event.target.closest('.dataset-v2-ref-query-btn');
+      if (refQueryBtnEl) {
+        const itemName = refQueryBtnEl.getAttribute('data-item-name') || '';
+        if (!itemName) return;
+        refQueryBtnEl.disabled = true;
+        const origText = refQueryBtnEl.textContent;
+        refQueryBtnEl.textContent = '查詢中...';
+        try {
+          const projects = await fetchReferencingProjects(itemName);
+          if (projects.length > 0) {
+            window.alert(`檔案 ${itemName} 被以下專案引用：\n${projects.map((p) => `  • ${p}`).join('\n')}`);
+          } else {
+            window.alert(`檔案 ${itemName} 目前未被任何專案引用。`);
+          }
+        } finally {
+          refQueryBtnEl.disabled = false;
+          refQueryBtnEl.textContent = origText;
+        }
+      }
+    });
+
+    document.addEventListener('change', async (event) => {
+      const input = event.target.closest('.dataset-v2-row-file-input');
+      if (!input) {
+        return;
+      }
+
+      const itemName = input.getAttribute('data-item-name') || '';
+      const triggerBtn = document.querySelector(`.dataset-v2-upload-item-btn[data-input-id="${input.id}"]`);
+      const exists = (triggerBtn?.getAttribute('data-exists') || '') === '1';
+      if (itemName) {
+        await uploadItem(itemName, input, exists);
+      }
+      input.value = '';
+    });
+
+    filterSelect?.addEventListener('change', () => {
+      const value = selectedFilter();
+      window.location.href = `/datasets-v2?filter=${encodeURIComponent(value)}`;
+    });
+
+    refreshBtn?.addEventListener('click', async () => {
+      await refreshList();
+    });
+
+    uploadForm?.addEventListener('submit', uploadGeneral);
+
+    toggleGeneralUploadByFilter();
+    refreshList();
+
+    const input = document.getElementById('csv-filter-input');
+    const table = document.getElementById('csv-preview-table');
+    const counter = document.getElementById('csv-filter-count');
+    if (input && table) {
+      const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+      const normalize = (text) => (text || '').toLowerCase().trim();
+      const updateCounter = () => {
+        if (!counter) return;
+        const visible = bodyRows.filter((row) => row.style.display !== 'none').length;
+        counter.textContent = `顯示 ${visible} / ${bodyRows.length} 筆`;
+      };
+
+      input.addEventListener('input', () => {
+        const keyword = normalize(input.value);
+        for (const row of bodyRows) {
+          const rowText = normalize(row.textContent);
+          row.style.display = !keyword || rowText.includes(keyword) ? '' : 'none';
+        }
+        updateCounter();
+      });
+
+      updateCounter();
+    }
+  })();
+</script>
+{% endblock %}

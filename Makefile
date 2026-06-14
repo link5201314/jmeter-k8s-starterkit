@@ -6,7 +6,7 @@ UVICORN := $(VENV_BIN)/uvicorn
 WEBAPP_IMAGE ?= jmeter-webapp:latest
 WEBAPP_IMAGE_TAR ?= /tmp/jmeter-webapp_latest.tar
 
-.PHONY: venv install webapp-run webapp-dev check clean clean-venv-old webapp-image-build webapp-image-load-k3s webapp-image-build-load-k3s
+.PHONY: venv install webapp-run webapp-dev check test clean clean-venv-old webapp-image-build webapp-image-load-k3s webapp-image-build-load-k3s
 
 venv:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -23,6 +23,9 @@ webapp-dev: install
 
 check: install
 	$(VENV_BIN)/python -m compileall webapp/app
+
+test: install
+	$(VENV_BIN)/python -m unittest discover -s webapp/tests -p 'test_*.py'
 
 clean:
 	rm -rf $(VENV_DIR)

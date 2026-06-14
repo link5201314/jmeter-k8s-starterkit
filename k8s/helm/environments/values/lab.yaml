@@ -45,7 +45,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.06.14-003654-EnvParamCollapse"
+    tag: "2026.06.14-205410-DatasetV2Fixes"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:
