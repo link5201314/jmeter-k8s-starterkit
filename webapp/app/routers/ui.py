@@ -34,6 +34,7 @@ from webapp.app.services.auth_service import (
     reset_user_password,
     update_user_group,
 )
+from webapp.app.services.report_meta_service import get_report_meta
 from webapp.app.services.file_service import ensure_subpath
 from webapp.app.services.report_service import discover_reports
 from webapp.app.services.db_restore_service import list_restore_envs
@@ -459,6 +460,7 @@ def reports_page(
     project: Optional[str] = "all",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    important_only: bool = False,
 ):
     user = _login_required(request)
     if isinstance(user, RedirectResponse):
@@ -481,10 +483,18 @@ def reports_page(
         except ValueError:
             selected_end_date = ""
 
-    reports = discover_reports(REPORT_DIR, project=project, start_at=start_at, end_at=end_at)
+    reports = []
+    for report in discover_reports(REPORT_DIR, project=project, start_at=start_at, end_at=end_at):
+        merged = {**report, **get_report_meta(report["rel_path"])}
+        if important_only and not merged["is_important"]:
+            continue
+        reports.append(merged)
     projects = sorted({r["project"] for r in discover_reports(REPORT_DIR)})
     if not projects:
         projects = []
+
+    can_edit_report_meta = can_drive_tests(user)
+    is_admin = can_manage_users(user)
 
     return templates.TemplateResponse(
         "reports.html",
@@ -496,6 +506,9 @@ def reports_page(
                 "selected_project": project or "all",
                 "selected_start_date": selected_start_date,
                 "selected_end_date": selected_end_date,
+                "selected_important_only": important_only,
+                "can_edit_report_meta": can_edit_report_meta,
+                "is_admin": is_admin,
             },
         ),
     )

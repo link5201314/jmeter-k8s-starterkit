@@ -23,6 +23,8 @@ Optional:
   --report-prefix <prefix>          Auto host prefix (default: jmeter-report)
   --grafana-prefix <prefix>         Auto host prefix (default: jmeter-grafana)
   --webapp-prefix <prefix>          Auto host prefix (default: jmeter-web)
+  --webapp-image-repository <repo>  Override webapp image repository for Helm
+  --webapp-image-tag <tag>          Override webapp image tag for Helm
   --master-node-label <k=v>         Optional selector for jmeter-master pod (repeatable)
   --slave-node-label <k=v>          Optional selector for jmeter-slave pods (repeatable)
   --telegraf-cluster-rbac <bool>    true for primary namespace, false for secondary (default: false)
@@ -63,6 +65,8 @@ base_domain=""
 report_host=""
 grafana_host=""
 webapp_host=""
+webapp_image_repository=""
+webapp_image_tag=""
 
 telegraf_cluster_rbac="false"
 skip_dependency_build=0
@@ -196,6 +200,10 @@ while [[ $# -gt 0 ]]; do
       grafana_host="$2"; shift 2 ;;
     --webapp-host)
       webapp_host="$2"; shift 2 ;;
+    --webapp-image-repository)
+      webapp_image_repository="$2"; shift 2 ;;
+    --webapp-image-tag)
+      webapp_image_tag="$2"; shift 2 ;;
     --telegraf-cluster-rbac)
       telegraf_cluster_rbac="$2"; shift 2 ;;
     --skip-telegraf-rbac-subject-sync)
@@ -263,12 +271,20 @@ fi
 cmd=(
   helm upgrade --install "${release}" "${chart_path}"
   -n "${namespace}"
+  --reset-values
   -f "${values_file}"
   --set-string "report-server.ingress.host=${report_host}"
   --set-string "grafana.ingress.host=${grafana_host}"
   --set-string "webapp.ingress.host=${webapp_host}"
   --set "telegraf.rbac.createClusterScopedResources=${telegraf_cluster_rbac}"
 )
+
+if [[ -n "${webapp_image_repository}" ]]; then
+  cmd+=(--set-string "webapp.image.repository=${webapp_image_repository}")
+fi
+if [[ -n "${webapp_image_tag}" ]]; then
+  cmd+=(--set-string "webapp.image.tag=${webapp_image_tag}")
+fi
 
 if [[ ${#master_node_labels[@]} -gt 0 ]]; then
   for label in "${master_node_labels[@]}"; do

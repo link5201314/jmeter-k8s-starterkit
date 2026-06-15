@@ -75,6 +75,8 @@ spec:
 {{- range .Values.global.imagePullSecrets }}
         - name: {{ . }}
 {{- end }}
+    {{- else }}
+      imagePullSecrets: []
 {{- end }}
       containers:
       - name: wiremock

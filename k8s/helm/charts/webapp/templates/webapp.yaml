@@ -20,6 +20,8 @@ spec:
 {{- range .Values.global.imagePullSecrets }}
         - name: {{ . }}
 {{- end }}
+    {{- else }}
+      imagePullSecrets: []
 {{- end }}
 {{- if .Values.nodeSelector }}
       nodeSelector:

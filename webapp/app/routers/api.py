@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -25,11 +26,13 @@ from webapp.app.core.config import (
     STOP_SCRIPT,
 )
 from webapp.app.services.file_service import ensure_subpath, read_text, write_text
+from webapp.app.services.report_meta_service import delete_report_meta, get_report_meta, set_report_important, set_report_notes
 from webapp.app.services.process_service import get_jobs_status, run_background
 from webapp.app.services.report_service import make_report_zip, make_reports_zip, discover_reports
 from webapp.app.services.auth_service import (
     require_authenticated,
     require_drive_tests,
+    can_drive_tests,
     can_manage_users,
     require_manage_configs,
     require_manage_projects,
@@ -1163,6 +1166,81 @@ def download_report_batch_zip(
 
     make_reports_zip(REPORT_DIR, report_dirs, zip_path)
     return FileResponse(str(zip_path), filename=zip_filename)
+
+
+def _can_edit_report_meta(user: dict | None) -> bool:
+    return can_drive_tests(user)
+
+
+def _parse_bool(value) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+@router.patch("/reports/meta")
+async def update_report_meta(request: Request):
+    user = require_authenticated(request)
+    if not _can_edit_report_meta(user):
+        raise HTTPException(403, "無權限更新報告重要標記或備註")
+
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "請提供 JSON 資料")
+
+    report_dir = str(payload.get("report_dir", "")).strip()
+    if not report_dir:
+        raise HTTPException(400, "report_dir 不可為空")
+
+    safe_dir = ensure_subpath(REPORT_DIR, REPORT_DIR / report_dir)
+    if not safe_dir.exists() or not safe_dir.is_dir():
+        raise HTTPException(404, "Report directory not found")
+
+    updated = False
+    important_value = _parse_bool(payload.get("is_important"))
+    if important_value is not None:
+        set_report_important(report_dir, important_value)
+        updated = True
+
+    if "notes" in payload:
+        set_report_notes(report_dir, str(payload.get("notes", "")))
+        updated = True
+
+    if not updated:
+        raise HTTPException(400, "沒有可更新的欄位")
+
+    return {"ok": True, "report_dir": report_dir, "meta": get_report_meta(report_dir)}
+
+
+@router.delete("/reports/delete")
+def delete_report(request: Request, report_dir: str):
+    user = require_authenticated(request)
+    if not can_manage_users(user):
+        raise HTTPException(403, "只有 Admin 可以刪除報告")
+
+    clean_report_dir = str(report_dir).strip()
+    if not clean_report_dir:
+        raise HTTPException(400, "report_dir 不可為空")
+
+    safe_dir = ensure_subpath(REPORT_DIR, REPORT_DIR / clean_report_dir)
+    if not safe_dir.exists() or not safe_dir.is_dir():
+        raise HTTPException(404, "Report directory not found")
+
+    if get_report_meta(clean_report_dir).get("is_important"):
+        raise HTTPException(400, "重要報告不可刪除，請先取消重要標記")
+
+    shutil.rmtree(safe_dir)
+    delete_report_meta(clean_report_dir)
+    return {"ok": True}
 
 
 def _get_ssh_config_from_secret(env: str) -> dict:

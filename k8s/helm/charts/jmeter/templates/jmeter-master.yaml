@@ -79,6 +79,8 @@ spec:
 {{- range .Values.global.imagePullSecrets }}
         - name: {{ . }}
 {{- end }}
+    {{- else }}
+      imagePullSecrets: []
 {{- end }}
     {{- if .Values.global.master.nodeSelector }}
       nodeSelector:

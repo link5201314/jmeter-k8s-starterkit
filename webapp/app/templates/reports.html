@@ -1,10 +1,102 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+  .reports-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .report-note-display {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    cursor: pointer;
+    min-height: 2.75rem;
+  }
+
+  .report-note-display.static {
+    cursor: default;
+  }
+
+  .report-note-editor {
+    min-height: 5rem;
+    resize: vertical;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .report-important-cell {
+    width: 5rem;
+    text-align: center;
+  }
+
+  .report-note-cell {
+    width: 28%;
+    min-width: 16rem;
+  }
+
+  .report-actions-cell {
+    width: 12rem;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 767.98px) {
+    .reports-table thead {
+      display: none;
+    }
+
+    .reports-table,
+    .reports-table tbody,
+    .reports-table tr,
+    .reports-table td {
+      display: block;
+      width: 100%;
+    }
+
+    .reports-table tr.report-row {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .reports-table td {
+      border: 0;
+      padding: 0.35rem 0;
+    }
+
+    .reports-table td::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: 0.2rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--bs-secondary-color);
+    }
+
+    .report-important-cell,
+    .report-note-cell,
+    .report-actions-cell {
+      width: 100%;
+      min-width: 0;
+      text-align: left;
+      white-space: normal;
+    }
+
+    .report-actions-cell .btn {
+      margin-bottom: 0.4rem;
+    }
+  }
+</style>
+
 <div class="card shadow-sm mb-3">
   <div class="card-body">
     <form method="get" action="/reports" class="row g-2 align-items-end">
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label">專案目錄</label>
         <select class="form-select" name="project">
           <option value="all" {% if selected_project == 'all' %}selected{% endif %}>全部專案</option>
@@ -21,8 +113,14 @@
         <label class="form-label">結束日期</label>
         <input type="date" class="form-control" name="end_date" value="{{ selected_end_date }}">
       </div>
-      <div class="col-md-2"><button class="btn btn-outline-primary w-100">篩選</button></div>
-      <div class="col-12 d-flex gap-2 align-items-center">
+      <div class="col-md-3 d-flex gap-2 align-items-end">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" value="1" id="important-only" name="important_only" {% if selected_important_only %}checked{% endif %}>
+          <label class="form-check-label" for="important-only">只顯示重要</label>
+        </div>
+        <button class="btn btn-outline-primary flex-grow-1">篩選</button>
+      </div>
+      <div class="col-12 d-flex gap-2 align-items-center flex-wrap">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="quick-today">當日</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="quick-7days">近 7 天</button>
         <button type="button" class="btn btn-sm btn-primary" id="download-filtered-zip">下載篩選結果 ZIP</button>
@@ -34,30 +132,59 @@
 </div>
 
 <div class="card shadow-sm">
-  <div class="card-header">測試報告下載</div>
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>測試報告下載</span>
+    <div class="small text-muted">重要與備註僅限 Executor 以上可編輯</div>
+  </div>
   <div class="card-body p-0">
-    <table class="table mb-0">
+    <div class="col-12 d-none px-3 pt-3" id="report-action-alert"></div>
+    <table class="table mb-0 align-middle reports-table">
       <thead>
         <tr>
+          <th class="report-important-cell">重要</th>
           <th>專案</th>
           <th>產生時間</th>
           <th>報告目錄</th>
+          <th>備註</th>
           <th class="text-end">操作</th>
         </tr>
       </thead>
       <tbody>
         {% for r in reports %}
-        <tr>
-          <td>{{ r.project }}</td>
-          <td>{{ r.generated_at }}</td>
-          <td>{{ r.name }}</td>
-          <td class="text-end">
+        <tr class="report-row" data-report-dir="{{ r.rel_path }}" data-important="{{ '1' if r.is_important else '0' }}">
+          <td class="report-important-cell" data-label="重要">
+            <input
+              type="checkbox"
+              class="form-check-input report-important-toggle"
+              {% if r.is_important %}checked{% endif %}
+              {% if not can_edit_report_meta %}disabled{% endif %}
+            >
+          </td>
+          <td data-label="專案">{{ r.project }}</td>
+          <td data-label="產生時間">{{ r.generated_at }}</td>
+          <td data-label="報告目錄">{{ r.name }}</td>
+          <td class="report-note-cell" data-label="備註">
+            {% if can_edit_report_meta %}
+            <div class="report-note-display" role="button" tabindex="0" title="{{ r.notes or '（無備註）' }}">{{ r.notes or '（無備註）' }}</div>
+            <textarea class="form-control report-note-editor d-none" rows="3" data-original="{{ r.notes | e }}">{{ r.notes }}</textarea>
+            {% else %}
+            <div class="report-note-display static" title="{{ r.notes or '（無備註）' }}">{{ r.notes or '（無備註）' }}</div>
+            {% endif %}
+          </td>
+          <td class="text-end report-actions-cell" data-label="操作">
+            {% if is_admin %}
+            <button
+              type="button"
+              class="btn btn-sm btn-danger report-delete-btn me-1"
+              {% if r.is_important %}disabled title="重要報告不可刪除，請先取消重要標記"{% endif %}
+            >刪除</button>
+            {% endif %}
             <a class="btn btn-sm btn-outline-primary" href="/report-static/{{ r.rel_path }}/index.html" target="_blank">預覽報告</a>
             <a class="btn btn-sm btn-primary" href="/api/reports/download-zip?report_dir={{ r.rel_path | urlencode }}">ZIP</a>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="text-muted">目前沒有報告資料夾</td></tr>
+        <tr><td colspan="6" class="text-muted">目前沒有報告資料夾</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -66,25 +193,41 @@
 
 <script>
   (function () {
+    const canEditMeta = {{ 'true' if can_edit_report_meta else 'false' }};
+    const isAdmin = {{ 'true' if is_admin else 'false' }};
     const form = document.querySelector('form[action="/reports"]');
     if (!form) return;
 
+    const actionAlert = document.getElementById('report-action-alert');
     const startInput = form.querySelector('input[name="start_date"]');
     const endInput = form.querySelector('input[name="end_date"]');
     const todayBtn = document.getElementById('quick-today');
     const last7Btn = document.getElementById('quick-7days');
     const batchBtn = document.getElementById('download-filtered-zip');
-    const alertBox = document.getElementById('batch-download-alert');
-    if (!startInput || !endInput || !todayBtn || !last7Btn || !batchBtn || !alertBox) return;
+    const batchAlert = document.getElementById('batch-download-alert');
+    if (!startInput || !endInput || !todayBtn || !last7Btn || !batchBtn || !batchAlert) return;
 
     const showAlert = (message, kind = 'warning') => {
-      alertBox.className = `col-12 alert alert-${kind} py-2 mb-0`;
-      alertBox.textContent = message;
+      if (!actionAlert) return;
+      actionAlert.className = `col-12 alert alert-${kind} py-2 mb-0 px-3`;
+      actionAlert.textContent = message;
+      actionAlert.classList.remove('d-none');
     };
 
     const hideAlert = () => {
-      alertBox.className = 'col-12 d-none';
-      alertBox.textContent = '';
+      if (!actionAlert) return;
+      actionAlert.className = 'col-12 d-none px-3 pt-3';
+      actionAlert.textContent = '';
+    };
+
+    const showBatchAlert = (message, kind = 'warning') => {
+      batchAlert.className = `col-12 alert alert-${kind} py-2 mb-0`;
+      batchAlert.textContent = message;
+    };
+
+    const hideBatchAlert = () => {
+      batchAlert.className = 'col-12 d-none';
+      batchAlert.textContent = '';
     };
 
     const toDateString = (date) => {
@@ -94,7 +237,167 @@
       return `${year}-${month}-${day}`;
     };
 
+    const parseResponseError = async (response) => {
+      let detail = `操作失敗（HTTP ${response.status}）`;
+      try {
+        const data = await response.json();
+        detail = data.detail || detail;
+      } catch (_error) {
+        detail = `操作失敗（HTTP ${response.status}）`;
+      }
+      return detail;
+    };
+
+    const saveReportMeta = async (reportDir, payload) => {
+      const response = await fetch('/api/reports/meta', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ report_dir: reportDir, ...payload }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseResponseError(response));
+      }
+      return response.json();
+    };
+
+    const updateNoteDisplay = (row, value) => {
+      const display = row.querySelector('.report-note-display');
+      const textarea = row.querySelector('.report-note-editor');
+      const text = value && String(value).trim() ? String(value) : '（無備註）';
+      if (display) {
+        display.textContent = text;
+        display.title = text;
+      }
+      if (textarea) {
+        textarea.dataset.original = value || '';
+      }
+    };
+
+    const finishEditingNote = async (row, textarea, save = true) => {
+      const display = row.querySelector('.report-note-display');
+      const reportDir = row.dataset.reportDir || '';
+      const nextValue = textarea.value;
+      const previousValue = textarea.dataset.original || '';
+
+      textarea.classList.add('d-none');
+      if (display) {
+        display.classList.remove('d-none');
+      }
+
+      if (!save || nextValue === previousValue) {
+        textarea.value = previousValue;
+        return;
+      }
+
+      try {
+        await saveReportMeta(reportDir, { notes: nextValue });
+        updateNoteDisplay(row, nextValue);
+      } catch (error) {
+        textarea.value = previousValue;
+        updateNoteDisplay(row, previousValue);
+        showAlert(error.message, 'danger');
+      }
+    };
+
+    const startEditingNote = (row) => {
+      if (!canEditMeta) return;
+      const display = row.querySelector('.report-note-display');
+      const textarea = row.querySelector('.report-note-editor');
+      if (!display || !textarea) return;
+      display.classList.add('d-none');
+      textarea.classList.remove('d-none');
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    };
+
+    if (canEditMeta) {
+      document.querySelectorAll('.report-row').forEach((row) => {
+        const display = row.querySelector('.report-note-display');
+        const textarea = row.querySelector('.report-note-editor');
+        const importantToggle = row.querySelector('.report-important-toggle');
+
+        if (display && textarea) {
+          display.addEventListener('click', () => startEditingNote(row));
+          display.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              startEditingNote(row);
+            }
+          });
+          textarea.addEventListener('blur', () => {
+            void finishEditingNote(row, textarea, true);
+          });
+          textarea.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              textarea.value = textarea.dataset.original || '';
+              void finishEditingNote(row, textarea, false);
+            }
+          });
+        }
+
+        if (importantToggle) {
+          importantToggle.addEventListener('change', async () => {
+            const reportDir = row.dataset.reportDir || '';
+            const previousValue = row.dataset.important === '1';
+            const nextValue = importantToggle.checked;
+
+            if (previousValue && !nextValue) {
+              const ok = window.confirm('是否真的要取消重要報告標記，取消後的報告將可以由管理者進行刪除!');
+              if (!ok) {
+                importantToggle.checked = true;
+                return;
+              }
+            }
+
+            try {
+              await saveReportMeta(reportDir, { is_important: nextValue });
+              row.dataset.important = nextValue ? '1' : '0';
+              const deleteBtn = row.querySelector('.report-delete-btn');
+              if (deleteBtn) {
+                deleteBtn.disabled = nextValue;
+                deleteBtn.title = nextValue ? '重要報告不可刪除，請先取消重要標記' : '';
+              }
+            } catch (error) {
+              importantToggle.checked = previousValue;
+              showAlert(error.message, 'danger');
+            }
+          });
+        }
+      });
+    }
+
+    if (isAdmin) {
+      document.querySelectorAll('.report-delete-btn').forEach((button) => {
+        button.addEventListener('click', async () => {
+          if (button.disabled) {
+            return;
+          }
+          const row = button.closest('.report-row');
+          if (!row) return;
+          const reportDir = row.dataset.reportDir || '';
+          const ok = window.confirm('確定要刪除此報告？刪除後無法復原!');
+          if (!ok) return;
+
+          try {
+            const response = await fetch(`/api/reports/delete?report_dir=${encodeURIComponent(reportDir)}`, {
+              method: 'DELETE',
+            });
+            if (!response.ok) {
+              throw new Error(await parseResponseError(response));
+            }
+            row.remove();
+          } catch (error) {
+            showAlert(error.message, 'danger');
+          }
+        });
+      });
+    }
+
     todayBtn.addEventListener('click', () => {
+      hideBatchAlert();
       hideAlert();
       const now = new Date();
       const dateStr = toDateString(now);
@@ -104,6 +407,7 @@
     });
 
     last7Btn.addEventListener('click', () => {
+      hideBatchAlert();
       hideAlert();
       const end = new Date();
       const start = new Date();
@@ -114,6 +418,7 @@
     });
 
     batchBtn.addEventListener('click', async () => {
+      hideBatchAlert();
       hideAlert();
 
       const formData = new FormData(form);
@@ -132,14 +437,7 @@
       try {
         const response = await fetch(`/api/reports/download-zip-batch?${params.toString()}`);
         if (!response.ok) {
-          let detail = `下載失敗（HTTP ${response.status}）`;
-          try {
-            const data = await response.json();
-            detail = data.detail || detail;
-          } catch (_error) {
-            detail = `下載失敗（HTTP ${response.status}）`;
-          }
-          showAlert(detail, response.status === 400 ? 'warning' : 'danger');
+          showBatchAlert(await parseResponseError(response), response.status === 400 ? 'warning' : 'danger');
           return;
         }
 
@@ -157,7 +455,7 @@
         link.remove();
         URL.revokeObjectURL(url);
       } catch (_error) {
-        showAlert('下載失敗，請稍後再試', 'danger');
+        showBatchAlert('下載失敗，請稍後再試', 'danger');
       } finally {
         batchBtn.disabled = false;
         batchBtn.textContent = originalText;
