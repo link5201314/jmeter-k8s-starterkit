@@ -71,12 +71,15 @@ def _project_from_legacy_dirname(dirname: str) -> Optional[str]:
     remaining = dirname[len("report-") :]
     if ".jmx-" in remaining:
         return remaining.split(".jmx-", 1)[0]
+    match = re.search(r"-(\d{4}-\d{2}-\d{2}_\d{6})$", remaining)
+    if match:
+        return remaining[: match.start()]
     return None
 
 
 def _extract_report_datetime(report_dir: Path) -> datetime:
     name = report_dir.name
-    match = re.search(r"\.jmx-(\d{4}-\d{2}-\d{2}_\d{6})$", name)
+    match = re.search(r"-(\d{4}-\d{2}-\d{2}_\d{6})$", name)
     if match:
         try:
             return datetime.strptime(match.group(1), "%Y-%m-%d_%H%M%S")

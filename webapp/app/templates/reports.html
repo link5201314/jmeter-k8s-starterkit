@@ -50,7 +50,7 @@
         <tr>
           <td>{{ r.project }}</td>
           <td>{{ r.generated_at }}</td>
-          <td>{{ r.rel_path }}</td>
+          <td>{{ r.name }}</td>
           <td class="text-end">
             <a class="btn btn-sm btn-outline-primary" href="/report-static/{{ r.rel_path }}/index.html" target="_blank">預覽報告</a>
             <a class="btn btn-sm btn-primary" href="/api/reports/download-zip?report_dir={{ r.rel_path | urlencode }}">ZIP</a>

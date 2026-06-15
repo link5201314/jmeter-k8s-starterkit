@@ -1014,7 +1014,8 @@ build_jmeter_global_params
 report_enabled=0
 if [ -n "${enable_report}" ]; then
     report_enabled=1
-    report_command_line="--reportatendofloadtests --reportoutputfolder /report/${jmx_dir}/report-${jmx}-\$(date +\"%F_%H%M%S\")"
+    report_name="${jmx%.jmx}"
+    report_command_line="--reportatendofloadtests --reportoutputfolder /report/${jmx_dir}/report-${report_name}-\$(date +\"%F_%H%M%S\")"
 fi
 
 echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -gt 0 ]; do for slave in \${slave_array[@]}; do if echo 'test open port' 2>/dev/null > /dev/tcp/\${slave}/1099; then echo \${slave}' ready' && slave_array=(\${slave_array[@]/\${slave}/}); index=\$((index-1)); else echo \${slave}' not ready'; fi; done; echo 'Waiting for slave readiness'; sleep 2; done" > "scenario/${jmx_dir}/load_test.sh"
@@ -1026,7 +1027,8 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
     printf 'REPORT_NOTE=%q\n' "${report_note}"
 
     echo "report_ts=\$(date +\"%F_%H%M%S\")"
-    echo "report_dir=\"/report/${jmx_dir}/report-${jmx}-\${report_ts}\""
+    echo "report_name=\"${jmx%.jmx}\""
+    echo "report_dir=\"/report/${jmx_dir}/report-\${report_name}-\${report_ts}\""
 
     echo "echo \"[DEBUG] report_ts=\${report_ts}\""
     echo "echo \"[DEBUG] report_dir=\${report_dir}\""
@@ -1058,7 +1060,7 @@ echo "slave_array=(${slave_array[@]}); index=${slave_num} && while [ \${index} -
     echo "JVM_ARGS=\"${JMETER_MASTER_JVM_HEAP_ARGS} \${JOLOKIA_JVM_ARG}\""
     echo "export JVM_ARGS"
     echo "echo \"Starting load test at : \$(date)\""
-    echo "jmeter ${param_all} --reportatendofloadtests --reportoutputfolder \${report_dir} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx}_\${report_ts}.jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err"
+    echo "jmeter ${param_all} --reportatendofloadtests --reportoutputfolder \${report_dir} ${report_props_arg} ${system_property_arg} --logfile /report/${jmx_dir}/${jmx%.jmx}_\${report_ts}.jtl --nongui --testfile ${jmx} -Dserver.rmi.ssl.disable=true --remotestart ${slave_list} >> jmeter-master.out 2>> jmeter-master.err"
 
     echo "if [ \"\${REPORT_ENABLED}\" = \"1\" ]; then"
     echo "  index_file=\"\${report_dir}/index.html\""
