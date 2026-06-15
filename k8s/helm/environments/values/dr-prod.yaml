@@ -75,7 +75,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.06.14-205410-DatasetV2Fixes"
+    tag: "2026.06.15-184958-reports-layout"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:
