@@ -45,7 +45,7 @@ webapp:
   enabled: true
   image:
     repository: docker.io/isaac0815/jmeter-webapp
-    tag: "2026.06.15-184958-reports-layout"
+    tag: "2026.06.16-090218-c46ca87-ui-sort"
     pullPolicy: Always
     useGlobalRegistry: false
   ingress:

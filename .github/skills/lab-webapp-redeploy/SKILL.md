@@ -1,6 +1,6 @@
 ---
 name: lab-webapp-redeploy
-description: 'Build 與 push webapp image，然後部署或重新部署 lab 環境的 performance-test、performance-test2。當 prompt 提到 lab deployment、全新部署、既有 namespace 升版、webapp build and push、重新部署兩個 namespaces、rollout 驗證、保留 ingress hosts 時使用。'
+description: 'Build 與 push webapp image，然後部署或重新部署 lab 環境的 performance-test、performance-test2(如果未定義則使用這兩個namespace當預設)。當 prompt 提到 lab deployment、全新部署、既有 namespace 升版、webapp build and push、重新部署兩個 namespaces、rollout 驗證、保留 ingress hosts 時使用。'
 argument-hint: '描述這次是全新 lab 部署，還是既有 namespaces 重新部署，以及目標 namespaces。'
 user-invocable: true
 ---
@@ -51,6 +51,7 @@ user-invocable: true
 - 除非使用者明確要求，否則不要用 `--apply-env-resources`。
 - 在 lab 環境中，除非使用者明確要求，否則避免依賴 image pull secrets。
 - 使用 deploy script 內建的 `--reset-values` 行為。
+- 重新部署時， 使用`--telegraf-cluster-rbac false`。
 
 ## 標準流程
 

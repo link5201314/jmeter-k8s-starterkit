@@ -43,9 +43,21 @@
       <table class="table table-sm table-bordered align-middle mb-0">
         <thead>
           <tr>
-            <th>檔名</th>
-            <th>狀態</th>
-            <th>最新上傳時間</th>
+            <th>
+              <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none dataset-v2-sort-btn" data-sort-key="name">
+                檔名<span class="ms-1 dataset-v2-sort-indicator" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th>
+              <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none dataset-v2-sort-btn" data-sort-key="status">
+                狀態<span class="ms-1 dataset-v2-sort-indicator" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th>
+              <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none dataset-v2-sort-btn" data-sort-key="latest_upload_at">
+                最新上傳時間<span class="ms-1 dataset-v2-sort-indicator" aria-hidden="true"></span>
+              </button>
+            </th>
             <th>操作</th>
           </tr>
         </thead>
@@ -116,6 +128,11 @@
     const tableBody = document.getElementById('dataset-v2-table-body');
     const refreshBtn = document.getElementById('dataset-v2-refresh-btn');
     const listTitle = document.getElementById('dataset-v2-list-title');
+    const sortButtons = Array.from(document.querySelectorAll('.dataset-v2-sort-btn'));
+    const sortState = {
+      key: 'latest_upload_at',
+      direction: 'desc',
+    };
 
     const nowText = () => new Date().toLocaleString('zh-TW', { hour12: false });
 
@@ -132,6 +149,47 @@
       .replaceAll("'", '&#39;');
 
     const selectedFilter = () => (filterSelect?.value || 'All').trim() || 'All';
+
+    const textComparator = (left, right) => left.localeCompare(right, 'zh-Hant', { numeric: true, sensitivity: 'base' });
+
+    const parseDateValue = (value) => {
+      const text = String(value || '').trim();
+      if (!text) {
+        return Number.NEGATIVE_INFINITY;
+      }
+      const normalized = text.replace(' ', 'T');
+      const timestamp = Date.parse(normalized);
+      return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+    };
+
+    const compareDatasetItems = (left, right) => {
+      if (sortState.key === 'latest_upload_at') {
+        return parseDateValue(left.latest_upload_at) - parseDateValue(right.latest_upload_at);
+      }
+
+      const leftText = String(left[sortState.key] || '').trim();
+      const rightText = String(right[sortState.key] || '').trim();
+      return textComparator(leftText, rightText);
+    };
+
+    const sortDatasetItems = (items) => items.sort((left, right) => {
+      const result = compareDatasetItems(left, right);
+      if (result === 0) {
+        return textComparator(String(left.name || ''), String(right.name || ''));
+      }
+      return sortState.direction === 'asc' ? result : -result;
+    });
+
+    const updateSortIndicators = () => {
+      sortButtons.forEach((button) => {
+        const indicator = button.querySelector('.dataset-v2-sort-indicator');
+        const isActive = button.dataset.sortKey === sortState.key;
+        button.classList.toggle('fw-semibold', isActive);
+        if (indicator) {
+          indicator.textContent = isActive ? (sortState.direction === 'asc' ? '↑' : '↓') : '';
+        }
+      });
+    };
 
     async function fetchReferencingProjects(fileName) {
       try {
@@ -183,12 +241,14 @@
         }
 
         const payload = await response.json();
-        const items = Array.isArray(payload.items) ? payload.items : [];
+        const items = Array.isArray(payload.items) ? payload.items.slice() : [];
 
         if (!items.length) {
           tableBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">尚無資料</td></tr>';
           return;
         }
+
+        sortDatasetItems(items);
 
         const rows = items.map((item, idx) => {
           const name = escapeHtml(item.name || '-');
@@ -440,9 +500,24 @@
       await refreshList();
     });
 
+    sortButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const nextKey = button.dataset.sortKey || 'name';
+        if (sortState.key === nextKey) {
+          sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = nextKey;
+          sortState.direction = nextKey === 'latest_upload_at' ? 'desc' : 'asc';
+        }
+        updateSortIndicators();
+        await refreshList();
+      });
+    });
+
     uploadForm?.addEventListener('submit', uploadGeneral);
 
     toggleGeneralUploadByFilter();
+    updateSortIndicators();
     refreshList();
 
     const input = document.getElementById('csv-filter-input');

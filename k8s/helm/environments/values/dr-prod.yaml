@@ -75,7 +75,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.06.15-184958-reports-layout"
+    tag: "2026.06.16-090218-c46ca87-ui-sort"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:

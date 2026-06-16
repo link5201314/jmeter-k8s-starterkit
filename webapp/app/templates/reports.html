@@ -9,6 +9,7 @@
 
   .report-note-display {
     display: -webkit-box;
+    line-clamp: 2;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
@@ -44,6 +45,10 @@
   .report-actions-cell {
     width: 12rem;
     white-space: nowrap;
+  }
+
+  .report-sort-btn {
+    color: inherit;
   }
 
   @media (max-width: 767.98px) {
@@ -142,16 +147,32 @@
       <thead>
         <tr>
           <th class="report-important-cell">重要</th>
-          <th>專案</th>
-          <th>產生時間</th>
-          <th>報告目錄</th>
-          <th>備註</th>
+          <th>
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none report-sort-btn" data-sort-key="project">
+              專案<span class="ms-1 report-sort-indicator" aria-hidden="true"></span>
+            </button>
+          </th>
+          <th>
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none report-sort-btn" data-sort-key="generated_at">
+              產生時間<span class="ms-1 report-sort-indicator" aria-hidden="true"></span>
+            </button>
+          </th>
+          <th>
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none report-sort-btn" data-sort-key="name">
+              報告目錄<span class="ms-1 report-sort-indicator" aria-hidden="true"></span>
+            </button>
+          </th>
+          <th>
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none report-sort-btn" data-sort-key="notes">
+              備註<span class="ms-1 report-sort-indicator" aria-hidden="true"></span>
+            </button>
+          </th>
           <th class="text-end">操作</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="report-table-body">
         {% for r in reports %}
-        <tr class="report-row" data-report-dir="{{ r.rel_path }}" data-important="{{ '1' if r.is_important else '0' }}">
+        <tr class="report-row" data-report-dir="{{ r.rel_path }}" data-important="{{ '1' if r.is_important else '0' }}" data-sort-project="{{ r.project | e }}" data-sort-generated-at="{{ r.generated_at | e }}" data-sort-name="{{ r.name | e }}" data-sort-notes="{{ (r.notes or '') | e }}">
           <td class="report-important-cell" data-label="重要">
             <input
               type="checkbox"
@@ -199,13 +220,19 @@
     if (!form) return;
 
     const actionAlert = document.getElementById('report-action-alert');
+    const tableBody = document.getElementById('report-table-body');
     const startInput = form.querySelector('input[name="start_date"]');
     const endInput = form.querySelector('input[name="end_date"]');
     const todayBtn = document.getElementById('quick-today');
     const last7Btn = document.getElementById('quick-7days');
     const batchBtn = document.getElementById('download-filtered-zip');
     const batchAlert = document.getElementById('batch-download-alert');
-    if (!startInput || !endInput || !todayBtn || !last7Btn || !batchBtn || !batchAlert) return;
+    const sortButtons = Array.from(document.querySelectorAll('.report-sort-btn'));
+    const sortState = {
+      key: 'generated_at',
+      direction: 'desc',
+    };
+    if (!startInput || !endInput || !todayBtn || !last7Btn || !batchBtn || !batchAlert || !tableBody) return;
 
     const showAlert = (message, kind = 'warning') => {
       if (!actionAlert) return;
@@ -237,6 +264,50 @@
       return `${year}-${month}-${day}`;
     };
 
+    const textComparator = (left, right) => left.localeCompare(right, 'zh-Hant', { numeric: true, sensitivity: 'base' });
+
+    const parseDateValue = (value) => {
+      const text = String(value || '').trim();
+      if (!text) {
+        return Number.NEGATIVE_INFINITY;
+      }
+      const timestamp = Date.parse(text.replace(' ', 'T'));
+      return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+    };
+
+    const compareReportRows = (left, right) => {
+      if (sortState.key === 'generated_at') {
+        return parseDateValue(left.dataset.sortGeneratedAt) - parseDateValue(right.dataset.sortGeneratedAt);
+      }
+
+      const leftValue = String(left.dataset[`sort${sortState.key.charAt(0).toUpperCase()}${sortState.key.slice(1)}`] || '').trim();
+      const rightValue = String(right.dataset[`sort${sortState.key.charAt(0).toUpperCase()}${sortState.key.slice(1)}`] || '').trim();
+      return textComparator(leftValue, rightValue);
+    };
+
+    const updateSortIndicators = () => {
+      sortButtons.forEach((button) => {
+        const indicator = button.querySelector('.report-sort-indicator');
+        const isActive = button.dataset.sortKey === sortState.key;
+        button.classList.toggle('fw-semibold', isActive);
+        if (indicator) {
+          indicator.textContent = isActive ? (sortState.direction === 'asc' ? '↑' : '↓') : '';
+        }
+      });
+    };
+
+    const applyReportSort = () => {
+      const rows = Array.from(tableBody.querySelectorAll('.report-row'));
+      rows.sort((left, right) => {
+        const result = compareReportRows(left, right);
+        if (result === 0) {
+          return textComparator(left.dataset.sortName || '', right.dataset.sortName || '');
+        }
+        return sortState.direction === 'asc' ? result : -result;
+      });
+      rows.forEach((row) => tableBody.appendChild(row));
+    };
+
     const parseResponseError = async (response) => {
       let detail = `操作失敗（HTTP ${response.status}）`;
       try {
@@ -266,6 +337,7 @@
       const display = row.querySelector('.report-note-display');
       const textarea = row.querySelector('.report-note-editor');
       const text = value && String(value).trim() ? String(value) : '（無備註）';
+      row.dataset.sortNotes = value || '';
       if (display) {
         display.textContent = text;
         display.title = text;
@@ -273,6 +345,7 @@
       if (textarea) {
         textarea.dataset.original = value || '';
       }
+      applyReportSort();
     };
 
     const finishEditingNote = async (row, textarea, save = true) => {
@@ -461,6 +534,23 @@
         batchBtn.textContent = originalText;
       }
     });
+
+    sortButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const nextKey = button.dataset.sortKey || 'project';
+        if (sortState.key === nextKey) {
+          sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = nextKey;
+          sortState.direction = nextKey === 'generated_at' ? 'desc' : 'asc';
+        }
+        updateSortIndicators();
+        applyReportSort();
+      });
+    });
+
+    updateSortIndicators();
+    applyReportSort();
   })();
 </script>
 {% endblock %}
