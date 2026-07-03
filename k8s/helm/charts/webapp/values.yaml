@@ -18,6 +18,10 @@ service:
 ingress:
   enabled: true
   host: jmeter-web.example.com
+  ingressClassName: ""
+  tls:
+    enabled: false
+    secretName: ""
 
 resources:
   requests:

@@ -16,6 +16,10 @@ Host options (choose one strategy):
   --grafana-host <host>             Explicit grafana host
   --webapp-host <host>              Explicit webapp host
   --ingress-class-name <name>       Override ingressClassName for report/grafana/webapp
+  --tls-secret-name <name>          Shared TLS secret for report/grafana/webapp ingresses
+  --report-tls-secret-name <name>   Report ingress TLS secret override
+  --grafana-tls-secret-name <name>  Grafana ingress TLS secret override
+  --webapp-tls-secret-name <name>   Webapp ingress TLS secret override
 
 Optional:
   -r, --release <name>              Helm release name (default: perf-stack)
@@ -69,6 +73,10 @@ webapp_host=""
 ingress_class_name=""
 webapp_image_repository=""
 webapp_image_tag=""
+tls_secret_name=""
+report_tls_secret_name=""
+grafana_tls_secret_name=""
+webapp_tls_secret_name=""
 
 telegraf_cluster_rbac="false"
 skip_dependency_build=0
@@ -204,6 +212,14 @@ while [[ $# -gt 0 ]]; do
       webapp_host="$2"; shift 2 ;;
     --ingress-class-name)
       ingress_class_name="$2"; shift 2 ;;
+    --tls-secret-name)
+      tls_secret_name="$2"; shift 2 ;;
+    --report-tls-secret-name)
+      report_tls_secret_name="$2"; shift 2 ;;
+    --grafana-tls-secret-name)
+      grafana_tls_secret_name="$2"; shift 2 ;;
+    --webapp-tls-secret-name)
+      webapp_tls_secret_name="$2"; shift 2 ;;
     --webapp-image-repository)
       webapp_image_repository="$2"; shift 2 ;;
     --webapp-image-tag)
@@ -267,6 +283,30 @@ if [[ -z "${report_host}" || -z "${grafana_host}" || -z "${webapp_host}" ]]; the
   [[ -z "${webapp_host}" ]] && webapp_host="${webapp_prefix}-${namespace}.${base_domain}"
 fi
 
+default_tls_secret_name=""
+case "${helm_env}" in
+  lab)
+    default_tls_secret_name="wildcard-example-com-tls"
+    ;;
+  dr-prod)
+    default_tls_secret_name="wildcard-mgnt-mvdis-gov-tw-tls"
+    ;;
+esac
+
+if [[ -z "${tls_secret_name}" && -n "${default_tls_secret_name}" ]]; then
+  tls_secret_name="${default_tls_secret_name}"
+fi
+
+if [[ -z "${report_tls_secret_name}" ]]; then
+  report_tls_secret_name="${tls_secret_name}"
+fi
+if [[ -z "${grafana_tls_secret_name}" ]]; then
+  grafana_tls_secret_name="${tls_secret_name}"
+fi
+if [[ -z "${webapp_tls_secret_name}" ]]; then
+  webapp_tls_secret_name="${tls_secret_name}"
+fi
+
 if [[ "${skip_dependency_build}" -eq 0 ]]; then
   echo "[INFO] helm dependency build ${chart_path}"
   helm dependency build "${chart_path}" >/dev/null
@@ -278,8 +318,14 @@ cmd=(
   --reset-values
   -f "${values_file}"
   --set-string "report-server.ingress.host=${report_host}"
+  --set "report-server.ingress.tls.enabled=$([[ -n "${report_tls_secret_name}" ]] && echo true || echo false)"
+  --set-string "report-server.ingress.tls.secretName=${report_tls_secret_name}"
   --set-string "grafana.ingress.host=${grafana_host}"
+  --set "grafana.ingress.tls.enabled=$([[ -n "${grafana_tls_secret_name}" ]] && echo true || echo false)"
+  --set-string "grafana.ingress.tls.secretName=${grafana_tls_secret_name}"
   --set-string "webapp.ingress.host=${webapp_host}"
+  --set "webapp.ingress.tls.enabled=$([[ -n "${webapp_tls_secret_name}" ]] && echo true || echo false)"
+  --set-string "webapp.ingress.tls.secretName=${webapp_tls_secret_name}"
   --set "telegraf.rbac.createClusterScopedResources=${telegraf_cluster_rbac}"
 )
 
@@ -319,8 +365,11 @@ fi
 
 echo "[INFO] namespace=${namespace} helm_env=${helm_env} release=${release}"
 echo "[INFO] report host : ${report_host}"
+echo "[INFO] report tls  : ${report_tls_secret_name:-disabled}"
 echo "[INFO] grafana host: ${grafana_host}"
+echo "[INFO] grafana tls : ${grafana_tls_secret_name:-disabled}"
 echo "[INFO] webapp host : ${webapp_host}"
+echo "[INFO] webapp tls  : ${webapp_tls_secret_name:-disabled}"
 if [[ -n "${ingress_class_name}" ]]; then
   echo "[INFO] ingress class: ${ingress_class_name}"
 else

@@ -177,9 +177,24 @@ helm upgrade --install perf-stack k8s/helm \
 - `report-server.ingress.host`
 - `grafana.ingress.host`
 - `webapp.ingress.host`
+- `report-server.ingress.tls.*`
+- `grafana.ingress.tls.*`
+- `webapp.ingress.tls.*`
 - `ingress-class-name`（可選）
 - `global.master.nodeSelector.*`（可選）
 - `global.slave.nodeSelector.*`（可選）
+
+另外，`deploy_perf_stack.sh` 也會依 `--helm-env` 自動帶入共用 wildcard TLS secret 預設值：
+
+- `lab`：`wildcard-example-com-tls`
+- `dr-prod`：`wildcard-mgnt-mvdis-gov-tw-tls`
+
+若你要覆蓋預設 secret，可改傳：
+
+- `--tls-secret-name <name>`：三個 ingress 共用同一個 secret
+- `--report-tls-secret-name <name>`
+- `--grafana-tls-secret-name <name>`
+- `--webapp-tls-secret-name <name>`
 
 另外，腳本在 Helm 部署完成後，會自動檢查並補齊 `ClusterRoleBinding`（預設：`telegraf-metrics-reader`）內的 subject，確保包含當前 namespace 的 `telegraf` ServiceAccount（`<namespace>/telegraf`）。
 這可避免多 namespace 擴充時，Grafana dashboard 因 telegraf 權限缺漏而看不到 namespace 指標。
@@ -222,6 +237,31 @@ helm upgrade --install perf-stack k8s/helm \
   --helm-env dr-prod \
   --base-domain mgnt.mvdis.gov.tw \
   --telegraf-cluster-rbac false
+
+# lab 環境：自動套用 wildcard-example-com-tls
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env lab \
+  --base-domain example.com \
+  --telegraf-cluster-rbac true
+
+# 指定三個 ingress 共用同一張 wildcard 憑證 secret
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --tls-secret-name wildcard-mgnt-mvdis-gov-tw-tls \
+  --telegraf-cluster-rbac true
+
+# 需要時也可分別指定不同 ingress secret
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --report-tls-secret-name report-wildcard-tls \
+  --grafana-tls-secret-name grafana-wildcard-tls \
+  --webapp-tls-secret-name webapp-wildcard-tls \
+  --telegraf-cluster-rbac true
 
 # 指定 master/slave 分別部署到不同 label 節點
 ./deploy_perf_stack.sh \
@@ -291,6 +331,75 @@ helm upgrade --install perf-stack k8s/helm \
 ```
 
 ## Webapp 持久化補充（Scenario / Data）
+
+## Ingress Wildcard TLS 憑證建立
+
+若你希望 lab 與 dr-prod 內多個站台共用同一張自簽 wildcard 憑證，可先在本機用 OpenSSL 產生對應憑證與私鑰，再建立成 Kubernetes TLS secret。
+
+### Lab：`*.example.com`
+
+```bash
+mkdir -p tmp/tls/lab
+
+openssl req -x509 -nodes -newkey rsa:4096 -sha256 -days 825 \
+  -keyout tmp/tls/lab/wildcard-example.com.key \
+  -out tmp/tls/lab/wildcard-example.com.crt \
+  -subj "/CN=*.example.com" \
+  -addext "subjectAltName=DNS:*.example.com,DNS:example.com"
+
+kubectl -n performance-test create secret tls wildcard-example-com-tls \
+  --cert=tmp/tls/lab/wildcard-example.com.crt \
+  --key=tmp/tls/lab/wildcard-example.com.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+若要套用到第二個 namespace，只要改 namespace 重跑最後一段：
+
+```bash
+kubectl -n performance-test2 create secret tls wildcard-example-com-tls \
+  --cert=tmp/tls/lab/wildcard-example.com.crt \
+  --key=tmp/tls/lab/wildcard-example.com.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### DR-Prod：`*.mgnt.mvdis.gov.tw`
+
+```bash
+mkdir -p tmp/tls/dr-prod
+
+openssl req -x509 -nodes -newkey rsa:4096 -sha256 -days 825 \
+  -keyout tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
+  -out tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
+  -subj "/CN=*.mgnt.mvdis.gov.tw" \
+  -addext "subjectAltName=DNS:*.mgnt.mvdis.gov.tw,DNS:mgnt.mvdis.gov.tw"
+
+kubectl -n performance-test create secret tls wildcard-mgnt-mvdis-gov-tw-tls \
+  --cert=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
+  --key=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+第二個 namespace 範例：
+
+```bash
+kubectl -n performance-test2 create secret tls wildcard-mgnt-mvdis-gov-tw-tls \
+  --cert=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
+  --key=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### 驗證 secret 與 Ingress TLS 設定
+
+```bash
+kubectl -n performance-test get secret wildcard-example-com-tls
+kubectl -n performance-test get ingress report-server grafana-ingress jmeter-webapp -o yaml | grep -E 'host:|secretName:'
+```
+
+注意事項：
+
+- 自簽憑證只適合內部測試或受控 lab/dr 環境；瀏覽器與用戶端需自行信任該 CA/憑證。
+- 同一張 wildcard 憑證可覆蓋 `jmeter-report-<namespace>.<base-domain>`、`jmeter-grafana-<namespace>.<base-domain>`、`jmeter-web-<namespace>.<base-domain>`。
+- `deploy_perf_stack.sh` 只會把 Ingress 指到指定 `secretName`，不會自動建立 TLS secret；請先建立 secret 再部署。
 
 為避免重建 image 或重新部署時覆蓋環境資料，webapp 另有兩個專用 PVC 掛載：
 

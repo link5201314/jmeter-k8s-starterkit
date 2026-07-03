@@ -10,3 +10,7 @@ image:
 
 ingress:
   host: report.example.com
+  ingressClassName: ""
+  tls:
+    enabled: false
+    secretName: ""

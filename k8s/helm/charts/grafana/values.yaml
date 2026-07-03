@@ -14,3 +14,7 @@ pvc:
 
 ingress:
   host: grafana.example.com
+  ingressClassName: ""
+  tls:
+    enabled: false
+    secretName: ""
