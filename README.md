@@ -177,6 +177,7 @@ helm upgrade --install perf-stack k8s/helm \
 - `report-server.ingress.host`
 - `grafana.ingress.host`
 - `webapp.ingress.host`
+- `ingress-class-name`（可選）
 - `global.master.nodeSelector.*`（可選）
 - `global.slave.nodeSelector.*`（可選）
 
@@ -265,9 +266,22 @@ helm upgrade --install perf-stack k8s/helm \
 ```
 
 # dr環境完整範例(視情況決定telegraf-cluster-rbac)
+
+```bash
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --apply-env-resources \
+  ----ingress-class-name nginx \
+  --report-host jmeter-report1-dr.mgnt.mvdis.gov.tw \
+  --grafana-host jmeter-grafana1-dr.mgnt.mvdis.gov.tw \
+  --webapp-host jmeter-web1-dr.mgnt.mvdis.gov.tw \
+  --telegraf-cluster-rbac false
+
 ./deploy_perf_stack.sh \
   -n performance-test1 \
   --helm-env dr-prod \
+  --apply-env-resources \
   --report-host jmeter-report1-dr.mgnt.mvdis.gov.tw \
   --grafana-host jmeter-grafana1-dr.mgnt.mvdis.gov.tw \
   --webapp-host jmeter-web1-dr.mgnt.mvdis.gov.tw \

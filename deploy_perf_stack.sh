@@ -15,6 +15,7 @@ Host options (choose one strategy):
   --report-host <host>              Explicit report host
   --grafana-host <host>             Explicit grafana host
   --webapp-host <host>              Explicit webapp host
+  --ingress-class-name <name>       Override ingressClassName for report/grafana/webapp
 
 Optional:
   -r, --release <name>              Helm release name (default: perf-stack)
@@ -65,6 +66,7 @@ base_domain=""
 report_host=""
 grafana_host=""
 webapp_host=""
+ingress_class_name=""
 webapp_image_repository=""
 webapp_image_tag=""
 
@@ -200,6 +202,8 @@ while [[ $# -gt 0 ]]; do
       grafana_host="$2"; shift 2 ;;
     --webapp-host)
       webapp_host="$2"; shift 2 ;;
+    --ingress-class-name)
+      ingress_class_name="$2"; shift 2 ;;
     --webapp-image-repository)
       webapp_image_repository="$2"; shift 2 ;;
     --webapp-image-tag)
@@ -279,6 +283,12 @@ cmd=(
   --set "telegraf.rbac.createClusterScopedResources=${telegraf_cluster_rbac}"
 )
 
+if [[ -n "${ingress_class_name}" ]]; then
+  cmd+=(--set-string "report-server.ingress.ingressClassName=${ingress_class_name}")
+  cmd+=(--set-string "grafana.ingress.ingressClassName=${ingress_class_name}")
+  cmd+=(--set-string "webapp.ingress.ingressClassName=${ingress_class_name}")
+fi
+
 if [[ -n "${webapp_image_repository}" ]]; then
   cmd+=(--set-string "webapp.image.repository=${webapp_image_repository}")
 fi
@@ -311,6 +321,11 @@ echo "[INFO] namespace=${namespace} helm_env=${helm_env} release=${release}"
 echo "[INFO] report host : ${report_host}"
 echo "[INFO] grafana host: ${grafana_host}"
 echo "[INFO] webapp host : ${webapp_host}"
+if [[ -n "${ingress_class_name}" ]]; then
+  echo "[INFO] ingress class: ${ingress_class_name}"
+else
+  echo "[INFO] ingress class: from values file"
+fi
 echo "[INFO] telegraf cluster RBAC create=${telegraf_cluster_rbac}"
 echo "[INFO] apply env resources      : ${apply_env_resources}"
 echo "[INFO] telegraf RBAC subject sync skip=${skip_telegraf_rbac_subject_sync}"
