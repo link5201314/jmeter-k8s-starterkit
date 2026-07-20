@@ -1,7 +1,7 @@
 ---
 name: lab-webapp-redeploy
 description: 'Build 與 push webapp image，然後部署或重新部署 lab 環境的 performance-test、performance-test2(如果未定義則使用這兩個namespace當預設)。當 prompt 提到 lab deployment、全新部署、既有 namespace 升版、webapp build and push、重新部署兩個 namespaces、rollout 驗證、保留 ingress hosts 時使用。'
-argument-hint: '描述這次是全新 lab 部署，還是既有 namespaces 重新部署，以及目標 namespaces。'
+argument-hint: '描述這次是全新 lab 部署，還是既有 namespaces 重新部署，以及目標 namespaces；若未指定 values 檔，預設使用 lab.yaml。'
 user-invocable: true
 ---
 
@@ -15,6 +15,18 @@ user-invocable: true
 - 部署入口：[deploy_perf_stack.sh](../../../deploy_perf_stack.sh)
 - lab values：[k8s/helm/environments/values/lab.yaml](../../../k8s/helm/environments/values/lab.yaml)
 - 操作參考：[references/lab-deploy-reference.md](./references/lab-deploy-reference.md)
+
+## Values 檔案選擇
+- 這份 skill 的預設 values 檔一定是 `lab.yaml`
+- 除非使用者明確指定其他環境檔案，否則不得自行改用 `dr-prod.yaml` 或任何其他 values 檔
+- 如果 prompt 只提到 lab、既有 namespace 重新部署、rollout 驗證、保留 ingress hosts 或 webapp build/push，預設都視為 `lab.yaml`
+- 若使用者真的要用非 lab values，必須在 prompt 中明確說出檔名或環境名稱
+
+## 部署前檢查
+- 如果非全新部署則在任何 `helm upgrade`, `deploy_perf_stack.sh`, 或 image 更新動作之前，必須先讀取目標 namespace 目前的 ingress、deployment 與必要的 PVC / cronjob 狀態
+- 必須以這些現況作為 values 與部署參數的依據，不得先假設 values 檔內容仍然正確
+- 若現況與預設 `lab.yaml` 不一致，先以 namespace 現況為準，再決定是否需要覆寫 host、image repository、image tag、pull secret 或其他參數
+- 若無法先完成現況檢查，就不得直接進入部署步驟
 
 ## 依 Prompt 判斷模式
 
@@ -45,6 +57,8 @@ user-invocable: true
 - build & push 然後更新
 
 處理方式：
+- 預設使用 `k8s/helm/environments/values/lab.yaml`
+- 只有在使用者明確指定其他 values 檔時，才改用對應檔案
 - 如果 namespace 已存在，不要直接假設 values file 裡的 host 仍然正確。
 - 先讀取目標 namespace 現有的 ingress hosts，再回填到部署參數。
 - 除非 chart dependencies 有變動，否則預設使用 `--skip-dependency-build`。
