@@ -246,6 +246,33 @@ def _read_upload_owner_store() -> dict:
     return data
 
 
+def _normalize_owner_record(record: dict | None) -> dict | None:
+    if not isinstance(record, dict):
+        return None
+
+    original_owner = str(record.get("original_owner", "")).strip()
+    last_editor = str(record.get("last_editor", "")).strip()
+    updated_at = str(record.get("updated_at", "")).strip()
+
+    legacy_owner = str(record.get("owner", "")).strip()
+    legacy_updated_at = str(record.get("owner_updated_at", "")).strip()
+
+    if not original_owner:
+        original_owner = legacy_owner
+    if not last_editor:
+        last_editor = legacy_owner or original_owner
+    if not updated_at:
+        updated_at = legacy_updated_at
+
+    normalized = dict(record)
+    normalized["original_owner"] = original_owner
+    normalized["last_editor"] = last_editor
+    normalized["updated_at"] = updated_at
+    normalized["owner"] = original_owner
+    normalized["owner_updated_at"] = updated_at
+    return normalized
+
+
 def _write_upload_owner_store(data: dict) -> None:
     _UPLOAD_OWNER_STORE.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = _UPLOAD_OWNER_STORE.with_suffix(".tmp")
@@ -263,9 +290,7 @@ def _owner_record(store: dict, section: str, key: str) -> dict | None:
     if not isinstance(section_data, dict):
         return None
     value = section_data.get(key)
-    if not isinstance(value, dict):
-        return None
-    return value
+    return _normalize_owner_record(value)
 
 
 def _set_owner_record(store: dict, section: str, key: str, username: str) -> None:
@@ -273,9 +298,13 @@ def _set_owner_record(store: dict, section: str, key: str, username: str) -> Non
     if not isinstance(section_data, dict):
         section_data = {}
         store[section] = section_data
+    existing = _normalize_owner_record(section_data.get(key))
+    original_owner = str((existing or {}).get("original_owner", "")).strip() or username
     section_data[key] = {
-        "owner": username,
+        "original_owner": original_owner,
+        "last_editor": username,
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "owner": original_owner,
     }
 
 
@@ -288,10 +317,10 @@ def _assert_overwrite_allowed(target_exists: bool, confirm_overwrite: bool, user
         return
 
     current_user = _normalized_username(user)
-    owner_name = str((owner or {}).get("owner", "")).strip().lower()
-    if not owner_name:
+    original_owner = str((owner or {}).get("original_owner", "")).strip().lower()
+    if not original_owner:
         raise HTTPException(403, "非 Admin 不可覆蓋既有檔案（缺少上傳者資訊）")
-    if owner_name != current_user:
+    if original_owner != current_user:
         raise HTTPException(403, "非 Admin 不可覆蓋他人上傳的檔案")
 
 
@@ -300,10 +329,10 @@ def _assert_delete_allowed(user: dict, owner: dict | None) -> None:
         return
 
     current_user = _normalized_username(user)
-    owner_name = str((owner or {}).get("owner", "")).strip().lower()
-    if not owner_name:
+    original_owner = str((owner or {}).get("original_owner", "")).strip().lower()
+    if not original_owner:
         raise HTTPException(403, "非 Admin 不可刪除既有檔案（缺少上傳者資訊）")
-    if owner_name != current_user:
+    if original_owner != current_user:
         raise HTTPException(403, "非 Admin 不可刪除他人上傳的檔案")
 
 
@@ -795,18 +824,22 @@ def list_module_jmx(request: Request):
         for path in sorted(_MODULE_DIR.glob("*.jmx")):
             stat = path.stat()
             owner_key = path.name.strip().lower()
-            owner_record = owner_section.get(owner_key) if isinstance(owner_section, dict) else None
-            owner_name = str((owner_record or {}).get("owner", "")).strip()
-            owner_updated_at = str((owner_record or {}).get("updated_at", "")).strip()
-            can_overwrite = can_manage_users(user) or (owner_name.strip().lower() == current_user)
+            owner_record = _normalize_owner_record(owner_section.get(owner_key) if isinstance(owner_section, dict) else None)
+            original_owner = str((owner_record or {}).get("original_owner", "")).strip()
+            last_editor = str((owner_record or {}).get("last_editor", "")).strip()
+            last_editor_updated_at = str((owner_record or {}).get("updated_at", "")).strip()
+            can_overwrite = can_manage_users(user) or (original_owner.strip().lower() == current_user)
             files.append(
                 {
                     "name": path.name,
                     "size": stat.st_size,
                     "modified_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                     "md5": _file_md5(path),
-                    "owner": owner_name,
-                    "owner_updated_at": owner_updated_at,
+                    "owner": original_owner,
+                    "owner_updated_at": last_editor_updated_at,
+                    "original_owner": original_owner,
+                    "last_editor": last_editor,
+                    "last_editor_updated_at": last_editor_updated_at,
                     "can_overwrite": can_overwrite,
                 }
             )

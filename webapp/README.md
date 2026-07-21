@@ -19,8 +19,9 @@
 ## 檔案覆蓋權限（JMX / Dataset）
 
 - 上傳者資訊記錄於 `webapp/data/upload_owners.json`
+- 每筆紀錄保留 `original_owner` 與 `last_editor`
 - `Admin` 可覆蓋任意既有 JMX / Dataset
-- 非 `Admin` 只能覆蓋自己上傳的 JMX / Dataset
+- 非 `Admin` 只能覆蓋 `original_owner` 是自己的 JMX / Dataset
 - 非 `Admin` 嘗試覆蓋他人檔案時，API 會回 `403`
 
 ## Logs 頁面（JMeter Pod Logs）UX 優化

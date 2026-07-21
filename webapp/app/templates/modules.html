@@ -38,14 +38,15 @@
             <th>檔名</th>
             <th>大小</th>
             <th>最後修改</th>
-            <th>上傳者</th>
-            <th>上傳者更新時間</th>
+            <th>原始上傳者</th>
+            <th>最後編輯者</th>
+            <th>最後編輯時間</th>
             <th>MD5</th>
             <th>下載</th>
           </tr>
         </thead>
         <tbody id="module-table-body">
-          <tr><td colspan="7" class="text-muted text-center">讀取中...</td></tr>
+          <tr><td colspan="8" class="text-muted text-center">讀取中...</td></tr>
         </tbody>
       </table>
     </div>
@@ -83,7 +84,7 @@
     };
 
     async function refreshList() {
-      tableBody.innerHTML = '<tr><td colspan="7" class="text-muted text-center">讀取中...</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="8" class="text-muted text-center">讀取中...</td></tr>';
       try {
         const response = await fetch('/api/modules/jmx');
         if (!response.ok) {
@@ -94,14 +95,15 @@
         const files = Array.isArray(data.files) ? data.files : [];
 
         if (!files.length) {
-          tableBody.innerHTML = '<tr><td colspan="7" class="text-muted text-center">尚無 module JMX 檔案</td></tr>';
+          tableBody.innerHTML = '<tr><td colspan="8" class="text-muted text-center">尚無 module JMX 檔案</td></tr>';
           return;
         }
 
         const rows = files.map((f) => {
           const nameText = escapeHtml(f.name || '-');
-          const ownerText = escapeHtml(f.owner || '-');
-          const ownerAtText = escapeHtml(f.owner_updated_at || '-');
+          const originalOwnerText = escapeHtml(f.original_owner || f.owner || '-');
+          const lastEditorText = escapeHtml(f.last_editor || '-');
+          const lastEditorAtText = escapeHtml(f.last_editor_updated_at || f.owner_updated_at || '-');
           const modifiedText = escapeHtml(f.modified_at || '-');
           const md5Text = escapeHtml(f.md5 || '-');
           return `
@@ -109,8 +111,9 @@
               <td>${nameText}</td>
               <td>${formatSize(Number(f.size || 0))}</td>
               <td>${modifiedText}</td>
-              <td>${ownerText}</td>
-              <td>${ownerAtText}</td>
+              <td>${originalOwnerText}</td>
+              <td>${lastEditorText}</td>
+              <td>${lastEditorAtText}</td>
               <td class="font-monospace">${md5Text}</td>
               <td><a class="btn btn-sm btn-outline-primary" href="/api/modules/download-jmx?name=${encodeURIComponent(f.name || '')}">下載</a></td>
             </tr>
@@ -118,7 +121,7 @@
         });
         tableBody.innerHTML = rows.join('');
       } catch (error) {
-        tableBody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">讀取失敗：${error.message}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="8" class="text-danger text-center">讀取失敗：${error.message}</td></tr>`;
       }
     }
 
