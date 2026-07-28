@@ -20,11 +20,19 @@
       <div class="col-md-3 d-flex align-items-end {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-btn-col">
         <button id="dataset-v2-upload-btn" class="btn btn-primary w-100">上傳</button>
       </div>
-      <div class="col-12 {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-hint-col">
-        <div class="form-text mb-2">只有過濾條件為 All 時可使用此上傳功能。</div>
-      </div>
-      <div class="col-12 {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-state-col">
-        <span id="dataset-v2-upload-state" class="badge text-bg-secondary">尚未上傳</span>
+      <div class="col-12 {{ '' if selected_filter == 'All' else 'd-none' }}" id="dataset-v2-upload-options-col">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <small class="form-text text-muted">只有過濾條件為 All 時可使用此上傳功能。</small>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="enable-row-count-cache" name="enable_row_count_cache">
+            <label class="form-check-label" for="enable-row-count-cache">
+              立即計算並緩存行數
+            </label>
+          </div>
+          <div class="ms-auto">
+            <span id="dataset-v2-upload-state" class="badge text-bg-secondary">尚未上傳</span>
+          </div>
+        </div>
       </div>
     </form>
   </div>
@@ -33,7 +41,11 @@
 <div class="card shadow-sm">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span id="dataset-v2-list-title">目前 dataset 清單（{{ selected_filter }}）</span>
+    <div>
+      <span id="dataset-v2-count-badge" class="badge bg-info me-2" style="display: none;">共 0 筆 Dataset</span>
+    </div>
     <div class="d-flex gap-2">
+      <button id="dataset-v2-scan-cache-btn" class="btn btn-sm btn-outline-secondary" title="掃描並更新舊檔案的行數緩存（會比對時間戳，檔案有變更才重新計算）">掃描並緩存舊檔行數</button>
       <a id="dataset-v2-download-zip-btn" href="/api/datasets-v2/download-zip?filter={{ selected_filter | urlencode }}" class="btn btn-sm btn-outline-primary">下載目前篩選 ZIP</a>
       <button id="dataset-v2-refresh-btn" class="btn btn-sm btn-outline-primary">重新整理</button>
     </div>
@@ -58,11 +70,16 @@
                 最新上傳時間<span class="ms-1 dataset-v2-sort-indicator" aria-hidden="true"></span>
               </button>
             </th>
+            <th>
+              <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none dataset-v2-sort-btn" data-sort-key="row_count">
+                資料筆數<span class="ms-1 dataset-v2-sort-indicator" aria-hidden="true"></span>
+              </button>
+            </th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody id="dataset-v2-table-body">
-          <tr><td colspan="4" class="text-muted text-center">讀取中...</td></tr>
+          <tr><td colspan="5" class="text-muted text-center">讀取中...</td></tr>
         </tbody>
       </table>
     </div>
@@ -120,13 +137,15 @@
     const filterSelect = document.getElementById('dataset-v2-filter-select');
     const uploadFile = document.getElementById('dataset-v2-upload-file');
     const uploadBtn = document.getElementById('dataset-v2-upload-btn');
+    const enableRowCountCache = document.getElementById('enable-row-count-cache');
     const uploadState = document.getElementById('dataset-v2-upload-state');
-    const uploadStateCol = document.getElementById('dataset-v2-upload-state-col');
     const uploadFileCol = document.getElementById('dataset-v2-upload-file-col');
     const uploadBtnCol = document.getElementById('dataset-v2-upload-btn-col');
-    const uploadHintCol = document.getElementById('dataset-v2-upload-hint-col');
+    const uploadOptionsCol = document.getElementById('dataset-v2-upload-options-col');
     const tableBody = document.getElementById('dataset-v2-table-body');
     const refreshBtn = document.getElementById('dataset-v2-refresh-btn');
+    const scanCacheBtn = document.getElementById('dataset-v2-scan-cache-btn');
+    const countBadge = document.getElementById('dataset-v2-count-badge');
     const listTitle = document.getElementById('dataset-v2-list-title');
     const sortButtons = Array.from(document.querySelectorAll('.dataset-v2-sort-btn'));
     const sortState = {
@@ -167,6 +186,12 @@
         return parseDateValue(left.latest_upload_at) - parseDateValue(right.latest_upload_at);
       }
 
+      if (sortState.key === 'row_count') {
+        const leftCount = typeof left.row_count === 'number' ? left.row_count : -1;
+        const rightCount = typeof right.row_count === 'number' ? right.row_count : -1;
+        return leftCount - rightCount;
+      }
+
       const leftText = String(left[sortState.key] || '').trim();
       const rightText = String(right[sortState.key] || '').trim();
       return textComparator(leftText, rightText);
@@ -193,7 +218,9 @@
 
     async function fetchReferencingProjects(fileName) {
       try {
-        const resp = await fetch(`/api/datasets-v2/referencing-projects?name=${encodeURIComponent(fileName)}`);
+        const resp = await fetch(`/api/datasets-v2/referencing-projects?name=${encodeURIComponent(fileName)}`, {
+          credentials: 'include'
+        });
         if (!resp.ok) return [];
         const data = await resp.json();
         return Array.isArray(data.projects) ? data.projects : [];
@@ -214,9 +241,8 @@
       const isAll = selectedFilter() === 'All';
       uploadFileCol.style.display = isAll ? '' : 'none';
       uploadBtnCol.style.display = isAll ? '' : 'none';
-      uploadHintCol.style.display = isAll ? '' : 'none';
-      if (uploadStateCol) {
-        uploadStateCol.style.display = isAll ? '' : 'none';
+      if (uploadOptionsCol) {
+        uploadOptionsCol.style.display = isAll ? '' : 'none';
       }
       if (uploadFile) {
         uploadFile.required = isAll;
@@ -235,7 +261,9 @@
       }
 
       try {
-        const response = await fetch(`/api/datasets-v2/list?filter=${encodeURIComponent(currentFilter)}`);
+        const response = await fetch(`/api/datasets-v2/list?filter=${encodeURIComponent(currentFilter)}`, {
+          credentials: 'include'
+        });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -243,8 +271,14 @@
         const payload = await response.json();
         const items = Array.isArray(payload.items) ? payload.items.slice() : [];
 
+        // 更新頂部計數 badge
+        if (countBadge) {
+          countBadge.textContent = `共 ${items.length} 筆 Dataset`;
+          countBadge.style.display = items.length > 0 ? '' : 'none';
+        }
+
         if (!items.length) {
-          tableBody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">尚無資料</td></tr>';
+          tableBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">尚無資料</td></tr>';
           return;
         }
 
@@ -254,6 +288,9 @@
           const name = escapeHtml(item.name || '-');
           const status = escapeHtml(item.status || '-');
           const latestUploadAt = escapeHtml(item.latest_upload_at || '-');
+          const rowCount = item.row_count !== null && item.row_count !== undefined 
+            ? item.row_count.toLocaleString('en-US')
+            : '-';
           const isInvalidPath = item.status === '路徑不正確';
           const canUpload = !!item.can_upload;
           const showDelete = !!item.show_delete;
@@ -280,6 +317,7 @@
               </td>
               <td class="${statusClass}">${status}</td>
               <td>${latestUploadAt}</td>
+              <td>${rowCount}</td>
               <td>
                 <div class="d-flex flex-wrap gap-2">
                   <a href="/api/datasets/download?name=${encodeURIComponent(item.name || '')}" class="btn btn-sm btn-outline-secondary">下載</a>
@@ -294,7 +332,11 @@
 
         tableBody.innerHTML = rows.join('');
       } catch (error) {
-        tableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">讀取失敗：${escapeHtml(error.message || error)}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">讀取失敗：${escapeHtml(error.message || error)}</td></tr>`;
+        if (countBadge) {
+          countBadge.textContent = '共 0 筆 Dataset';
+          countBadge.style.display = 'none';
+        }
       }
     }
 
@@ -311,6 +353,13 @@
       const selected = uploadFile.files[0];
       const formData = new FormData();
       formData.append('file', selected);
+
+      // 添加 checkbox 狀態
+      if (enableRowCountCache && enableRowCountCache.checked) {
+        formData.append('enable_row_count_cache', 'true');
+      } else {
+        formData.append('enable_row_count_cache', 'false');
+      }
 
       const shouldConfirm = await fetch(`/api/datasets/download?name=${encodeURIComponent(selected.name)}`)
         .then((resp) => resp.ok)
@@ -332,6 +381,7 @@
       try {
         const response = await fetch('/api/datasets-v2/upload-general', {
           method: 'POST',
+          credentials: 'include',
           body: formData,
         });
         if (!response.ok) {
@@ -390,6 +440,7 @@
       try {
         const response = await fetch('/api/datasets-v2/upload-item', {
           method: 'POST',
+          credentials: 'include',
           body: formData,
         });
         if (!response.ok) {
@@ -418,6 +469,7 @@
       try {
         const response = await fetch(`/api/datasets-v2/${encodeURIComponent(itemName)}`, {
           method: 'DELETE',
+          credentials: 'include',
         });
         if (!response.ok) {
           let detail = `HTTP ${response.status}`;
@@ -432,6 +484,41 @@
         await refreshList();
       } catch (error) {
         setState('text-bg-danger', `刪除失敗：${error.message}`);
+      }
+    }
+
+    async function scanAndCacheRowCounts() {
+      if (scanCacheBtn) {
+        scanCacheBtn.disabled = true;
+        const originalText = scanCacheBtn.textContent;
+        scanCacheBtn.textContent = '掃描中...';
+        
+        try {
+          const response = await fetch('/api/datasets-v2/scan-and-cache', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (!response.ok) {
+            let detail = `HTTP ${response.status}`;
+            try {
+              const payload = await response.json();
+              detail = payload.detail || detail;
+            } catch (_) {}
+            throw new Error(detail);
+          }
+
+          const result = await response.json();
+          const message = `掃描完成！\n重新計算: ${result.recalculated || 0}\n跳過: ${result.skipped || 0}\n失敗: ${result.failed || 0}`;
+          window.alert(message);
+          
+          // 掃描完成後重新整理列表
+          await refreshList();
+        } catch (error) {
+          window.alert(`掃描失敗：${error.message}`);
+        } finally {
+          scanCacheBtn.disabled = false;
+          scanCacheBtn.textContent = originalText;
+        }
       }
     }
 
@@ -498,6 +585,10 @@
 
     refreshBtn?.addEventListener('click', async () => {
       await refreshList();
+    });
+
+    scanCacheBtn?.addEventListener('click', async () => {
+      await scanAndCacheRowCounts();
     });
 
     sortButtons.forEach((button) => {

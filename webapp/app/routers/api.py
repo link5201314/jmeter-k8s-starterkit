@@ -1066,7 +1066,11 @@ async def dataset_v2_upload_general(
     request: Request,
     file: UploadFile = File(...),
     confirm_overwrite: bool = Form(False),
+    enable_row_count_cache: bool = Form(False),
 ):
+    from datetime import datetime as dt
+    from webapp.app.services.dataset_v2_service import count_csv_rows
+    
     user = require_project_management(request)
 
     if not file.filename or not file.filename.endswith(".csv"):
@@ -1077,12 +1081,37 @@ async def dataset_v2_upload_general(
     owner_key = target_name.lower()
     owner_store = _read_upload_owner_store()
     existing_owner = _owner_record(owner_store, "dataset", owner_key)
-    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+    is_overwriting = target.exists()
+    
+    _assert_overwrite_allowed(is_overwriting, confirm_overwrite, user, existing_owner)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(await file.read())
 
     _set_owner_record(owner_store, "dataset", owner_key, str(user.get("username", "")))
+    
+    # 處理行數緩存邏輯
+    section_data = owner_store.get("dataset", {})
+    if isinstance(section_data, dict) and owner_key in section_data:
+        record = section_data[owner_key]
+        if isinstance(record, dict):
+            # 獲取檔案的修改時間
+            file_mtime = dt.fromtimestamp(target.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            record["updated_at"] = file_mtime
+            
+            if enable_row_count_cache:
+                # 用戶勾選了計算行數，進行計算並緩存
+                row_count = count_csv_rows(target)
+                if row_count is not None:
+                    record["row_count"] = row_count
+            else:
+                # 用戶沒有勾選，如果是覆蓋檔案則清空舊的 row_count 緩存
+                if is_overwriting:
+                    record.pop("row_count", None)
+                else:
+                    # 新檔案不勾選也設為 None
+                    record["row_count"] = None
+    
     _write_upload_owner_store(owner_store)
 
     return {
@@ -1099,7 +1128,11 @@ async def dataset_v2_upload_item(
     item_name: str = Form(...),
     file: UploadFile = File(...),
     confirm_overwrite: bool = Form(False),
+    enable_row_count_cache: bool = Form(False),
 ):
+    from datetime import datetime as dt
+    from webapp.app.services.dataset_v2_service import count_csv_rows
+    
     user = require_project_management(request)
 
     if not file.filename or not file.filename.endswith(".csv"):
@@ -1113,12 +1146,37 @@ async def dataset_v2_upload_item(
     owner_key = target_name.lower()
     owner_store = _read_upload_owner_store()
     existing_owner = _owner_record(owner_store, "dataset", owner_key)
-    _assert_overwrite_allowed(target.exists(), confirm_overwrite, user, existing_owner)
+    is_overwriting = target.exists()
+    
+    _assert_overwrite_allowed(is_overwriting, confirm_overwrite, user, existing_owner)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(await file.read())
 
     _set_owner_record(owner_store, "dataset", owner_key, str(user.get("username", "")))
+    
+    # 處理行數緩存邏輯
+    section_data = owner_store.get("dataset", {})
+    if isinstance(section_data, dict) and owner_key in section_data:
+        record = section_data[owner_key]
+        if isinstance(record, dict):
+            # 獲取檔案的修改時間
+            file_mtime = dt.fromtimestamp(target.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            record["updated_at"] = file_mtime
+            
+            if enable_row_count_cache:
+                # 用戶勾選了計算行數，進行計算並緩存
+                row_count = count_csv_rows(target)
+                if row_count is not None:
+                    record["row_count"] = row_count
+            else:
+                # 用戶沒有勾選，如果是覆蓋檔案則清空舊的 row_count 緩存
+                if is_overwriting:
+                    record.pop("row_count", None)
+                else:
+                    # 新檔案不勾選也設為 None
+                    record["row_count"] = None
+    
     _write_upload_owner_store(owner_store)
 
     return {
@@ -1153,6 +1211,32 @@ def dataset_v2_delete(name: str, request: Request):
         _write_upload_owner_store(owner_store)
 
     return {"ok": True, "name": name}
+
+
+@router.post("/datasets-v2/scan-and-cache", dependencies=[Depends(require_project_management)])
+def dataset_v2_scan_and_cache(request: Request):
+    from webapp.app.services.dataset_v2_service import scan_and_cache_all_csv_row_counts
+    
+    require_project_management(request)
+    
+    owner_store = _read_upload_owner_store()
+    owner_section = owner_store.get("dataset", {})
+    if not isinstance(owner_section, dict):
+        owner_section = {}
+        owner_store["dataset"] = owner_section
+    
+    results = scan_and_cache_all_csv_row_counts(DATASET_DIR, owner_section)
+    
+    # 將更新後的元數據寫回
+    owner_store["dataset"] = owner_section
+    _write_upload_owner_store(owner_store)
+    
+    return {
+        "ok": True,
+        "recalculated": results.get("recalculated", 0),
+        "skipped": results.get("skipped", 0),
+        "failed": results.get("failed", 0),
+    }
 
 
 @router.get("/reports/download-index")

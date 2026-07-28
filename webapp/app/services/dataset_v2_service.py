@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import posixpath
 import re
 from dataclasses import dataclass
@@ -39,6 +40,22 @@ def list_dataset_files(dataset_dir: Path) -> list[Path]:
     if not dataset_dir.exists() or not dataset_dir.is_dir():
         return []
     return sorted(path for path in dataset_dir.glob("*.csv") if path.is_file())
+
+
+def count_csv_rows(file_path: Path) -> Optional[int]:
+    """
+    計算 CSV 檔案的行數（包含表頭）。
+    若計算失敗則返回 None。
+    """
+    if not file_path.exists() or not file_path.is_file():
+        return None
+
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            reader = csv.reader(f)
+            return sum(1 for _ in reader)
+    except Exception:
+        return None
 
 
 def read_project_env(project_dir: Path) -> dict[str, str]:
@@ -213,6 +230,9 @@ def build_project_dataset_items(
 
             latest_upload_at = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
+        # 從 owner_record 讀取緩存的 row_count，而非即時計算
+        row_count = (owner_record or {}).get("row_count") if owner_record else None
+
         items.append(
             {
                 "name": name,
@@ -223,6 +243,7 @@ def build_project_dataset_items(
                 "can_upload": bool(info["path_valid"]),
                 "show_delete": False,
                 "source_jmx_files": sorted(set(info["sources"])),
+                "row_count": row_count,
             }
         )
 
@@ -241,6 +262,9 @@ def build_all_dataset_items(dataset_dir: Path, owner_section: dict) -> list[dict
 
             latest_upload_at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
+        # 從 owner_record 讀取緩存的 row_count，而非即時計算
+        row_count = (owner_record or {}).get("row_count") if owner_record else None
+
         items.append(
             {
                 "name": path.name,
@@ -250,6 +274,7 @@ def build_all_dataset_items(dataset_dir: Path, owner_section: dict) -> list[dict
                 "path_valid": True,
                 "can_upload": True,
                 "show_delete": False,
+                "row_count": row_count,
             }
         )
     return items
@@ -282,6 +307,9 @@ def build_unattached_dataset_items(
 
             latest_upload_at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
+        # 從 owner_record 讀取緩存的 row_count，而非即時計算
+        row_count = (owner_record or {}).get("row_count") if owner_record else None
+
         items.append(
             {
                 "name": path.name,
@@ -291,6 +319,7 @@ def build_unattached_dataset_items(
                 "path_valid": True,
                 "can_upload": True,
                 "show_delete": True,
+                "row_count": row_count,
             }
         )
 
@@ -304,3 +333,74 @@ def pick_dataset_target_name(item_name: str, uploaded_filename: Optional[str]) -
     if expected:
         return expected
     return uploaded
+
+
+def scan_and_cache_all_csv_row_counts(dataset_dir: Path, owner_section: dict) -> dict:
+    """
+    掃描所有 CSV 檔案，並根據時間戳邏輯決定是否需要重新計算行數。
+    
+    時間戳比對邏輯：
+    - 如果 owner_section 中記錄的 updated_at 與檔案的 mtime 不相符，
+      即使已有 row_count 也要重新計算
+    - 如果時間相符且已有 row_count，則跳過（無需重新計算）
+    - 如果時間相符但無 row_count，則計算並記錄
+    
+    返回統計結果：
+    {
+        'recalculated': int,  # 重新計算的檔案數
+        'skipped': int,        # 跳過的檔案數
+        'failed': int          # 計算失敗的檔案數
+    }
+    """
+    from datetime import datetime
+    
+    results = {'recalculated': 0, 'skipped': 0, 'failed': 0}
+    
+    if not dataset_dir.exists() or not dataset_dir.is_dir():
+        return results
+    
+    for file_path in list_dataset_files(dataset_dir):
+        owner_key = file_path.name.strip().lower()
+        owner_record = owner_section.get(owner_key) if isinstance(owner_section, dict) else None
+        
+        if owner_record is None:
+            owner_record = {}
+            owner_section[owner_key] = owner_record
+        
+        # 獲取記錄中的 updated_at（如果存在）
+        recorded_updated_at_str = str((owner_record or {}).get("updated_at", "")).strip()
+        recorded_row_count = (owner_record or {}).get("row_count")
+        
+        # 獲取檔案的實際修改時間
+        try:
+            file_mtime = file_path.stat().st_mtime
+            file_mtime_str = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            results['failed'] += 1
+            continue
+        
+        # 時間戳比對邏輯：比對格式化後的時間戳字符串
+        # 注意：由於格式只精確到秒，所以用字符串比對是可以的
+        # 如果需要更精確的比對，可以使用完整的 mtime 值
+        needs_recalculation = (
+            recorded_updated_at_str != file_mtime_str or  # 時間不相符
+            recorded_row_count is None  # 或者沒有 row_count
+        )
+        
+        if needs_recalculation:
+            # 需要重新計算
+            try:
+                new_row_count = count_csv_rows(file_path)
+                if new_row_count is not None:
+                    owner_record['row_count'] = new_row_count
+                    owner_record['updated_at'] = file_mtime_str
+                    results['recalculated'] += 1
+                else:
+                    results['failed'] += 1
+            except Exception:
+                results['failed'] += 1
+        else:
+            # 跳過（時間相符且已有 row_count）
+            results['skipped'] += 1
+    
+    return results
