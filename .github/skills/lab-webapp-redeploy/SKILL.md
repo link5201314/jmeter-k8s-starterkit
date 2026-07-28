@@ -85,8 +85,8 @@ user-invocable: true
 - 從 repo root 使用 `webapp/Dockerfile` 進行 build。
 
 ## 部署規則
-- lab 的 `performance-test` 使用 `--telegraf-cluster-rbac true`。
-- lab 的 `performance-test2` 使用 `--telegraf-cluster-rbac false`。
+- 只有全新部署時 lab 的 `performance-test` 使用 `--telegraf-cluster-rbac true`。
+- lab 的 `performance-test2` 一律使用 `--telegraf-cluster-rbac false`。
 - 重新部署時要重用目前的 ingress hosts。
 - 使用 `--webapp-image-repository` 與 `--webapp-image-tag` 鎖定新的 image。
 - 日常重新部署優先使用 `--skip-dependency-build`。
