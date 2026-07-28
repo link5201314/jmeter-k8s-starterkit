@@ -209,11 +209,12 @@ helm upgrade --install perf-stack k8s/helm \
 
 - 參數格式必須是 `key=value`。
 - 沒有填時為預設行為：不限制 nodeSelector（可排程到所有可用 workload node）。
-- 腳本會同步產生 `k8s/helm/environments/runtime-overrides/<helm-env>.<namespace>.yaml`，供 `start_test.sh` 自動載入。
-- 腳本也會同步寫入 namespace 內的 ConfigMap：`jmeter-runtime-node-selector-override`（key: `override.yaml`）。
+- 腳本會同步產生 `k8s/helm/environments/runtime-overrides/<helm-env>.<namespace>.yaml`（供本地參考備查）。
+- 腳本會同步寫入 namespace 內的 ConfigMap：`jmeter-runtime-node-selector-override`（key: `override.yaml`），作為 `start_test.sh` 的唯一真實來源（Single Source of Truth）。
 
-也就是說，當你先用 `deploy_perf_stack.sh` 設定了 master/slave label 後，後續同 namespace + 同 helm-env 的 `start_test.sh` 會自動沿用相同 nodeSelector 行為，不需要再手動 `--set`。
-若 `start_test.sh` 執行環境（例如 jmeter-webapp 容器）讀不到本地 `runtime-overrides` 檔案，會自動 fallback 讀取上述 ConfigMap。
+也就是說，當你先用 `deploy_perf_stack.sh` 設定了 master/slave label 後，後續同 namespace 的 `start_test.sh` 會自動從 ConfigMap 讀取並套用相同 nodeSelector 行為，不需要再手動 `--set`。
+
+> **設計說明：** 由於 `start_test.sh` 可能在 webapp 容器內執行，無法直接讀取 host 上的本地檔案，因此 ConfigMap 是跨 Pod/Container 傳遞部署參數的唯一可靠機制。`deploy_perf_stack.sh` 產生的本地 `runtime-overrides` 檔案僅供參考備查，不影響實際部署行為。
 
 預設命名規則：
 
