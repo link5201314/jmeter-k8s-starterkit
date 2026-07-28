@@ -75,7 +75,7 @@ webapp:
   enabled: true
   image:
     repository: qa_team/jmeter-k8s-webapp
-    tag: "2026.07.20-201114-fdeb5dd"
+    tag: "2026.07.29-045955"
     pullPolicy: Always
     useGlobalRegistry: true
   ingress:
