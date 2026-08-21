@@ -4,7 +4,7 @@
 <div class="card shadow-sm mb-4">
   <div class="card-header">啟動測試</div>
   <div class="card-body">
-    <form method="post" action="/api/tests/start" class="row g-3">
+    <form id="start-test-form" method="post" action="/api/tests/start" class="row g-3">
       <div class="col-md-4">
         <label class="form-label">專案</label>
         <select class="form-select" name="project" required>
@@ -14,11 +14,17 @@
         </select>
         <div class="form-text">自動使用 <code>專案名.jmx</code> 作為測試腳本</div>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-8">
         <label class="form-label">Namespace</label>
-        <input class="form-control" name="namespace" value="{{ default_namespace }}" readonly>
+        <div class="d-flex align-items-center gap-2">
+          <input class="form-control" name="namespace" value="{{ default_namespace }}" readonly>
+          <div class="d-flex flex-wrap gap-3 ms-1">
+            <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="copy_csv" checked> CSV</div>
+            <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="copy_module"> Module</div>
+            <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="enable_report" checked> Report</div>
+          </div>
+        </div>
       </div>
-      <div class="col-md-4"></div>
       <div class="col-md-3">
         <label class="form-label">Min Slaves</label>
         <input class="form-control" type="number" name="min_slaves" value="2" min="1">
@@ -42,15 +48,19 @@
         <label class="form-label">Helm Release</label>
         <input class="form-control" name="helm_release" value="jmeter-runtime">
       </div>
-      <div class="col-md-12 d-flex align-items-end">
-        <div class="d-flex flex-wrap gap-3">
-          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="copy_csv" checked> CSV</div>
-          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="copy_module"> Module</div>
-          <div class="form-check form-check-inline mb-0"><input class="form-check-input" type="checkbox" name="enable_report" checked> Report</div>
-        </div>
+      <div id="start-test-message" class="col-12 d-none"></div>
+      <div class="col-12">
+        <button id="start-test-submit" class="btn btn-primary" type="submit">啟動測試</button>
       </div>
-      <div class="col-12"><button class="btn btn-primary">啟動測試</button></div>
     </form>
+
+    <div id="active-command-card" class="alert alert-info mt-3 d-none mb-0">
+      <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
+        <strong>目前執行命令</strong>
+        <span id="active-command-created" class="badge text-bg-secondary">-</span>
+      </div>
+      <pre id="active-command-text" class="mb-0" style="white-space: pre-wrap; word-break: break-all;">-</pre>
+    </div>
   </div>
 </div>
 
@@ -103,6 +113,7 @@
           <tr><th>master job (active/succeeded/failed)</th><td id="runtime-master-job">-</td></tr>
           <tr><th>slave job active</th><td id="runtime-slave-job">-</td></tr>
           <tr><th>master pod</th><td id="runtime-master-pod">-</td></tr>
+          <tr><th>已執行時間</th><td id="runtime-elapsed-time">-</td></tr>
         </tbody>
       </table>
     </div>
@@ -112,6 +123,13 @@
 
 <script>
   (() => {
+    const startForm = document.getElementById("start-test-form");
+    const startSubmit = document.getElementById("start-test-submit");
+    const startMessage = document.getElementById("start-test-message");
+    const activeCommandCard = document.getElementById("active-command-card");
+    const activeCommandCreated = document.getElementById("active-command-created");
+    const activeCommandText = document.getElementById("active-command-text");
+
     const form = document.getElementById("runtime-status-form");
     const nsInput = document.getElementById("runtime-namespace");
     const updatedAt = document.getElementById("runtime-updated-at");
@@ -121,8 +139,67 @@
     const masterJob = document.getElementById("runtime-master-job");
     const slaveJob = document.getElementById("runtime-slave-job");
     const masterPod = document.getElementById("runtime-master-pod");
+    const elapsedTime = document.getElementById("runtime-elapsed-time");
 
     const nowTimeText = () => new Date().toLocaleString("zh-TW", { hour12: false });
+
+    function formatElapsedTime(createdAtText) {
+      if (!createdAtText) return "-";
+      const createdAt = new Date(createdAtText.replace(" ", "T"));
+      if (Number.isNaN(createdAt.getTime())) return "-";
+      const totalSeconds = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / 1000));
+      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+      const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      return `${hours}:${minutes}:${seconds}`;
+    }
+
+    function setStartMessage(type, text) {
+      if (!startMessage) return;
+      if (!text) {
+        startMessage.className = "col-12 d-none";
+        startMessage.textContent = "";
+        return;
+      }
+      const mapped = type === "danger" ? "danger" : (type === "success" ? "success" : "secondary");
+      startMessage.className = `col-12 alert alert-${mapped} py-2 mb-0`;
+      startMessage.textContent = text;
+    }
+
+    function setCommandVisible(visible, payload = null) {
+      if (!activeCommandCard || !activeCommandCreated || !activeCommandText) return;
+      if (!visible) {
+        activeCommandCard.classList.add("d-none");
+        activeCommandCreated.textContent = "-";
+        activeCommandText.textContent = "-";
+        if (elapsedTime) elapsedTime.textContent = "-";
+        return;
+      }
+      activeCommandCard.classList.remove("d-none");
+      activeCommandCreated.textContent = payload?.created_at ? `啟動時間 ${payload.created_at}` : "啟動時間 -";
+      activeCommandText.textContent = payload?.cmd_text || "-";
+      if (elapsedTime) elapsedTime.textContent = formatElapsedTime(payload?.created_at || "");
+    }
+
+    async function syncActiveCommandFromServer() {
+      const ns = (nsInput?.value || "performance-test").trim();
+      try {
+        const response = await fetch(`/api/tests/active-command?namespace=${encodeURIComponent(ns)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (!data.active) {
+          setCommandVisible(false);
+          if (startSubmit) startSubmit.disabled = false;
+          return;
+        }
+
+        setCommandVisible(true, data);
+        if (startSubmit) startSubmit.disabled = true;
+      } catch (error) {
+        setStartMessage("danger", `讀取執行命令失敗：${error.message}`);
+      }
+    }
 
     async function refreshStatus() {
       const ns = (nsInput.value || "performance-test").trim();
@@ -143,6 +220,15 @@
         slaveJob.textContent = String(data.slave_job?.active ?? 0);
         masterPod.textContent = `${data.master_pod?.name || "-"} (${data.master_pod?.phase || "-"})`;
 
+        const currentCreatedAt = activeCommandCreated?.textContent?.includes("啟動時間")
+          ? activeCommandCreated.textContent.replace("啟動時間 ", "")
+          : "";
+        if (elapsedTime) elapsedTime.textContent = formatElapsedTime(currentCreatedAt);
+
+        if (!data.running && startSubmit) {
+          startSubmit.disabled = false;
+        }
+
         updatedAt.className = "badge text-bg-success";
         updatedAt.textContent = `已更新 ${nowTimeText()}`;
       } catch (error) {
@@ -158,8 +244,35 @@
       await refreshStatus();
     });
 
+    startForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setStartMessage("secondary", "啟動中，請稍候...");
+      if (startSubmit) startSubmit.disabled = true;
+
+      try {
+        const payload = new FormData(startForm);
+        const response = await fetch(startForm.action, {
+          method: "POST",
+          body: payload,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || `HTTP ${response.status}`);
+        }
+
+        setStartMessage("success", "已送出啟動指令，系統將持續追蹤執行狀態。");
+        await syncActiveCommandFromServer();
+        await refreshStatus();
+      } catch (error) {
+        if (startSubmit) startSubmit.disabled = false;
+        setStartMessage("danger", `啟動失敗：${error.message}`);
+      }
+    });
+
     refreshStatus();
+    syncActiveCommandFromServer();
     setInterval(refreshStatus, 10000);
+    setInterval(syncActiveCommandFromServer, 10000);
   })();
 </script>
 {% endblock %}

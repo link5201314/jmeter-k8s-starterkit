@@ -27,7 +27,14 @@ from webapp.app.core.config import (
 )
 from webapp.app.services.file_service import ensure_subpath, read_text, write_text
 from webapp.app.services.report_meta_service import delete_report_meta, get_report_meta, set_report_important, set_report_notes
-from webapp.app.services.process_service import get_jobs_status, run_background
+from webapp.app.services.process_service import (
+    clear_start_test_state,
+    get_jobs_status,
+    load_start_test_state,
+    run_background,
+    save_start_test_state,
+    update_start_test_state,
+)
 from webapp.app.services.report_service import make_report_zip, make_reports_zip, discover_reports
 from webapp.app.services.auth_service import (
     require_authenticated,
@@ -428,6 +435,7 @@ def start_test(
         run_background("start_test", cmd, REPO_ROOT, log_path)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    save_start_test_state(cmd=cmd, namespace=namespace, project=project)
     return {"ok": True, "cmd": cmd}
 
 
@@ -459,13 +467,18 @@ def test_status():
 
 @router.get("/tests/runtime-status", dependencies=[Depends(require_drive_tests)])
 def runtime_status(namespace: str = "performance-test"):
+    return _build_runtime_status(namespace)
+
+
+def _build_runtime_status(namespace: str) -> dict:
+    """整合背景程序與 Kubernetes 資訊，回傳測試執行狀態。"""
     jobs_status = get_jobs_status()
     start_job_status = jobs_status.get("start_test", "idle")
     stop_job_status = jobs_status.get("stop_test", "idle")
 
     master_job = _kubectl_json(namespace, ["get", "job", "jmeter-master"])
     slave_job = _kubectl_json(namespace, ["get", "job", "jmeter-slaves"])
-    pod_list = _kubectl_json(namespace, ["get", "pods", "-l", "jmeter_mode=master"]) or {"items": []}
+    pod_list = _kubectl_json(namespace, ["get", "pods", "-l", "jmeter_mode in (master,slave)"]) or {"items": []}
 
     master_active = int((master_job or {}).get("status", {}).get("active", 0)) if isinstance(master_job, dict) else 0
     master_succeeded = int((master_job or {}).get("status", {}).get("succeeded", 0)) if isinstance(master_job, dict) else 0
@@ -474,15 +487,28 @@ def runtime_status(namespace: str = "performance-test"):
 
     master_pod_phase = "N/A"
     master_pod_name = ""
+    active_pod_count = 0
     if isinstance(pod_list, dict) and pod_list.get("items"):
-        pod = pod_list["items"][0]
-        master_pod_name = pod.get("metadata", {}).get("name", "")
-        master_pod_phase = pod.get("status", {}).get("phase", "Unknown")
+        for pod in pod_list["items"]:
+            phase = pod.get("status", {}).get("phase", "Unknown")
+            if phase in {"Pending", "Running"}:
+                active_pod_count += 1
+        first_master = next(
+            (
+                item
+                for item in pod_list["items"]
+                if item.get("metadata", {}).get("labels", {}).get("jmeter_mode") == "master"
+            ),
+            None,
+        )
+        if isinstance(first_master, dict):
+            master_pod_name = first_master.get("metadata", {}).get("name", "")
+            master_pod_phase = first_master.get("status", {}).get("phase", "Unknown")
 
     running = (
         start_job_status == "running"
         or master_active > 0
-        or master_pod_phase == "Running"
+        or active_pod_count > 0
     )
 
     return {
@@ -503,6 +529,54 @@ def runtime_status(namespace: str = "performance-test"):
             "name": master_pod_name,
             "phase": master_pod_phase,
         },
+        "active_pod_count": active_pod_count,
+    }
+
+
+@router.get("/tests/active-command", dependencies=[Depends(require_drive_tests)])
+def get_active_start_command(namespace: str = "performance-test"):
+    """回傳目前啟動測試命令；若判定測試結束則自動清除。"""
+    state = load_start_test_state()
+    if state is None:
+        return {"active": False}
+
+    saved_namespace = str(state.get("namespace", "")).strip()
+    target_namespace = namespace.strip() or saved_namespace or "performance-test"
+
+    runtime = _build_runtime_status(target_namespace)
+    start_job_running = runtime.get("start_test_job") == "running"
+    runtime_running = bool(runtime.get("running"))
+
+    observed_running_once = bool(state.get("observed_running_once", False))
+    if runtime_running and not observed_running_once:
+        state["observed_running_once"] = True
+        observed_running_once = True
+        update_start_test_state(state)
+
+    startup_grace_seconds = int(state.get("startup_grace_seconds", 180) or 180)
+    created_at_text = str(state.get("created_at", "")).strip()
+    within_grace = False
+    if created_at_text:
+        try:
+            created_at = datetime.strptime(created_at_text, "%Y-%m-%d %H:%M:%S")
+            within_grace = (datetime.now() - created_at).total_seconds() <= max(10, startup_grace_seconds)
+        except ValueError:
+            within_grace = False
+
+    still_active = start_job_running or runtime_running or (not observed_running_once and within_grace)
+    if not still_active:
+        clear_start_test_state()
+        return {"active": False, "runtime": runtime, "reason": "runtime-finished"}
+
+    return {
+        "active": True,
+        "namespace": saved_namespace,
+        "project": state.get("project", ""),
+        "cmd": state.get("cmd", []),
+        "cmd_text": state.get("cmd_text", ""),
+        "created_at": state.get("created_at", ""),
+        "observed_running_once": observed_running_once,
+        "runtime": runtime,
     }
 
 

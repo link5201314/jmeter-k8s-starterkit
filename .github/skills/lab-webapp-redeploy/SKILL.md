@@ -22,13 +22,7 @@ user-invocable: true
 - 如果 prompt 只提到 lab、既有 namespace 重新部署、rollout 驗證、保留 ingress hosts 或 webapp build/push，預設都視為 `lab.yaml`
 - 若使用者真的要用非 lab values，必須在 prompt 中明確說出檔名或環境名稱
 
-## 部署前檢查
-- 如果非全新部署則在任何 `helm upgrade`, `deploy_perf_stack.sh`, 或 image 更新動作之前，必須先讀取目標 namespace 目前的 ingress、deployment 與必要的 PVC / cronjob 狀態
-- 必須以這些現況作為 values 與部署參數的依據，不得先假設 values 檔內容仍然正確
-- 若現況與預設 `lab.yaml` 不一致，先以 namespace 現況為準，再決定是否需要覆寫 host、image repository、image tag、pull secret 或其他參數
-- 若無法先完成現況檢查，就不得直接進入部署步驟
-
-## 依 Prompt 判斷模式
+## 依 Prompt 判斷模式採用以下模式A還是模式B
 
 ### 模式 A：全新部署 Full new deployment
 如果 prompt 出現以下語意，使用這個模式：
