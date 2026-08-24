@@ -2,7 +2,7 @@
 
 export ORACLE_BASE=/u01/app
 export ORACLE_HOME=/u01/app/oracle/product/23.0.0.0/dbhome_1
-export ORACLE_SID=CDBC1
+export ORACLE_SID=CDBZ1
 export ORACLE_TERM=xterm
 export PATH=$ORACLE_HOME/bin:$ORACLE_HOME/OPatch:/u01/app/xag/bin:/u01/app/ogg:$PATH:/usr/sbin
 export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
