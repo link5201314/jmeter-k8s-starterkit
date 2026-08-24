@@ -1,3 +1,8 @@
+> ## 致謝與版本說明
+>
+> 本專案 Fork 自 [Rbillon59/jmeter-k8s-starterkit](https://github.com/Rbillon59/jmeter-k8s-starterkit)，特別感謝原作者 Romain Billon（[Rbillon59](https://github.com/Rbillon59)）開源這套 JMeter Kubernetes starter kit，並提供完整的基礎架構與使用文件。
+>
+> 本版本在保留原始專案核心概念的基礎上，針對部署流程、JMeter 執行參數、報表、Helm 管理及 Web GUI 等部分進行增修。原作者 README 內容保留於前段；本專案的客製化調整與新增功能，請參考下方 **本專案新增功能與修改（再製版）** 章節。
 
 You can follow the full tutorial here : https://romain-billon.medium.com/ultimate-jmeter-kubernetes-starter-kit-7eb1a823649b
 
@@ -12,651 +17,6 @@ This is a template repository from which you can start load testing faster when 
 You will find inside it the necessary to organize and run your performance scenario. There is also a node monitoring tool which will monitor all your injection nodes. As well an embeded live monitoring with InfluxDB and Grafana
 
 Thanks to [Kubernauts](https://github.com/kubernauts/jmeter-kubernetes) for the inspiration !
-
-## JMeter Concurrency Thread Group Plugin（CTG）
-
-若要穩定使用 Concurrency Thread Group，建議改為「自製 JMeter image 並於 build 時安裝 plugin」，避免每次測試啟動時才連外下載 plugin（容易受 DNS/網路限制影響）。
-
-本專案已提供：
-
-- Dockerfile：`docker/jmeter-ctg/Dockerfile`
-- build/push 腳本：`docker/jmeter-ctg/build_and_push.sh`
-
-### 1) 建置與推送 image
-
-範例（請改成你自己的 registry/repo）：
-
-```bash
-chmod +x docker/jmeter-ctg/build_and_push.sh
-./docker/jmeter-ctg/build_and_push.sh docker.io/isaac0815/jmeter-k8s-base 5.6.3-ctg-1
-```
-
-若尚未登入 Docker Hub，先執行：`podman login docker.io`
-
-### 2) 更新 Helm values（master/slave 要一致）
-
-目前已在以下檔案預設為 CTG image：
-
-- `k8s/helm/charts/jmeter/values.yaml`
-
-若你的環境 values 設定了 `global.imageRegistry`（例如內網 Harbor），請留意：
-
-- 要直接拉 Docker Hub image（`docker.io/isaac0815/...`）時，`global.imageRegistry` 需為空字串。
-- 或者改成先把 image 同步到你的私有 registry，再填私有 repo 路徑。
-
-若你使用其他環境 values（例如 lab），也請同步覆蓋：
-
-```yaml
-global:
-  master:
-    image:
-      repository: <your-jmeter-image-repo>
-      tag: "5.6.3-ctg-1"
-  slave:
-    image:
-      repository: <your-jmeter-image-repo>
-      tag: "5.6.3-ctg-1"
-```
-
-### 3) 重新部署
-
-```bash
-helm dependency build k8s/helm
-helm upgrade --install perf-stack k8s/helm \
-  -n performance-test --create-namespace \
-  -f k8s/helm/environments/values/dr-prod.yaml
-```
-
-如果是啟動測試 runtime（`start_test.sh`），請確保其使用的 `--helm-env` 對應 values 也已改成你的 CTG image。
-
-### 4) 驗證 plugin 是否可用
-
-可在 master pod 檢查 plugin jar：
-
-```bash
-kubectl -n performance-test exec -it <jmeter-master-pod> -- \
-  ls -1 /opt/jmeter/apache-jmeter/lib/ext | grep -E 'casutg|cmn-jmeter|plugins-manager'
-```
-
-若有看到 `jmeter-plugins-casutg-*.jar`，代表 Concurrency Thread Group plugin 已在 image 中。
-
-## 客製版重點（Helm 管理模式）
-
-此客製版已將原本以 `kubectl create -R -f k8s/` 為主的部署方式，改為以 Helm 為主的管理模式。
-
-- 基礎元件以 `perf-stack` release 管理（環境值檔：`k8s/helm/environments/values/*.yaml`）
-- 測試執行期資源以 `jmeter-runtime` release 管理（由 `start_test.sh` 動態部署）
-- 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
-- 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`），主要因為這兩項元件在許多現有 K8s 平台環境中可能已經預先部署或由平台統一管理，為避免重複安裝或資源衝突，故獨立於本專案 Helm 管理之外，僅作參考，或本地乾淨的lab環境部署用。
-
-## 版本里程碑（Thread 配置策略轉折點）
-
-- Commit: `b6486bd537a6674b8f74b524d724bb5846ca2ee2`
-- 定位：此版本為 webapp 驅動測試流程中，**切換到「Min Slaves + Max Threads」分割配置 threads 策略之前**的穩定可用基準點。
-- 用途：若需回溯舊行為、比對新舊分配邏輯差異，或進行回歸驗證，可優先以此 commit 作為 baseline。
-
-## 重要架構說明：JMeter、Webapp、Report-Server 共用 PVC
-
-本專案設計特性如下：
-
-- JMeter（動態執行）、Webapp（管理介面）、Report-Server（報表瀏覽）三者共用同一個 PVC（jmeter-data-dir-pvc），以便測試報告能即時產生與瀏覽。
-- JMeter 測試資源（master/slave/job）是動態建立、動態清除（由 cleanup job 自動移除），而 Webapp 與 Report-Server 則為長駐服務。
-- 因此，**PVC 的建立必須交由 Helm umbrella chart（perf-stack release）統一管理**，避免多個 Helm release 在同一 PVC 上產生 ownership 衝突。
-
-### 正確操作方式
-
-- **安裝整體環境（perf-stack）時**，必須在 `k8s/helm/environments/values/lab.yaml` 設定：
-
-  ```yaml
-  global:
-    mastere:
-      enabled: false
-    slave:
-      enabled: false
-    pvc:
-      enabled: true
-  ```
-  這樣 umbrella chart 只會建立 PVC，不會建立 JMeter workload。
-  mastere.enabled、slave.enabled需要放在global底下是為了helm install不論是對整個k8s/helm還是只安裝k8s/helm/charts/jmeter都能通用所必需的。
-
-- **啟動測試（start_test.sh）時**，必須帶入 `--pvc-enabled false`，即 `global.pvc.enabled=false`，讓 runtime release 不會再建立 PVC，只動態建立/清除 JMeter master/slave/job 等資源，同時start_test.sh在啟動時會透過--set global.master.enabled=true與--set global.slave.enabled=true強制啟動jmeter。
-
-### 為什麼要這樣設計？
-
-- 若多個 Helm release（如 perf-stack、jmeter-runtime）同時管理同一 PVC，會造成 Helm ownership annotation 衝突，導致安裝/升級/移除時出現錯誤。
-- 這種設計可確保 PVC 生命週期由 umbrella chart 統一管理，JMeter 測試可安全動態執行與清除。
-
-> **重點：**
-> - perf-stack 安裝時：global.pvc.enabled=true
-> - start_test.sh 執行時：--pvc-enabled false
-
-### Telegraf 子 chart（Cluster RBAC）單例策略
-
-為避免在多 namespace 安裝 `perf-stack` 時，重複建立 cluster-scoped RBAC（`ClusterRole` / `ClusterRoleBinding`）造成 ownership 衝突，telegraf 子 chart 已新增以下參數：
-
-```yaml
-telegraf:
-  rbac:
-    createClusterScopedResources: true
-    clusterRoleName: metrics-reader
-    clusterRoleBindingName: telegraf-metrics-reader
-```
-
-- 第一個（主）namespace：`createClusterScopedResources=true`（建立 cluster RBAC）
-- 第二個（次）namespace：`createClusterScopedResources=false`（重用既有 cluster RBAC，不再重建）
-
-範例：
-
-```bash
-# primary namespace（建立 cluster-scoped RBAC）
-helm dependency build k8s/helm
-helm upgrade --install perf-stack k8s/helm \
-  -n performance-test --create-namespace \
-  -f k8s/helm/environments/values/dr-prod.yaml \
-  --set telegraf.rbac.createClusterScopedResources=true
-
-# secondary namespace（不要重建 cluster-scoped RBAC）
-helm dependency build k8s/helm
-helm upgrade --install perf-stack k8s/helm \
-  -n performance-test2 --create-namespace \
-  -f k8s/helm/environments/values/dr-prod.yaml \
-  --set telegraf.rbac.createClusterScopedResources=false
-```
-
-### 多 namespace Ingress Host 自動化（免手改 YAML）
-
-為避免 `report host`、`grafana host`、`webapp host` 在多 namespace 互撞，建議使用根目錄腳本：
-
-`./deploy_perf_stack.sh`
-
-另外，`k8s/helm/environments/resources/*/*.yaml` 內的 `Secret` / `ConfigMap` 已移除硬編碼 namespace。
-同一份 YAML 可以重複套用到不同 namespace，不需要另外維護 `performance-test2` 專用副本；改用 `kubectl -n <namespace> apply -f ...` 指定目標 namespace 即可。
-
-此腳本會以 Helm `--set-string` 自動覆寫以下值，不需手動修改任何 `k8s/helm/environments/values/*.yaml`：
-
-- `report-server.ingress.host`
-- `grafana.ingress.host`
-- `webapp.ingress.host`
-- `report-server.ingress.tls.*`
-- `grafana.ingress.tls.*`
-- `webapp.ingress.tls.*`
-- `ingress-class-name`（可選）
-- `global.master.nodeSelector.*`（可選）
-- `global.slave.nodeSelector.*`（可選）
-
-另外，`deploy_perf_stack.sh` 也會依 `--helm-env` 自動帶入共用 wildcard TLS secret 預設值：
-
-- `lab`：`wildcard-example-com-tls`
-- `dr-prod`：`wildcard-mgnt-mvdis-gov-tw-tls`
-
-若你要覆蓋預設 secret，可改傳：
-
-- `--tls-secret-name <name>`：三個 ingress 共用同一個 secret
-- `--report-tls-secret-name <name>`
-- `--grafana-tls-secret-name <name>`
-- `--webapp-tls-secret-name <name>`
-
-另外，腳本在 Helm 部署完成後，會自動檢查並補齊 `ClusterRoleBinding`（預設：`telegraf-metrics-reader`）內的 subject，確保包含當前 namespace 的 `telegraf` ServiceAccount（`<namespace>/telegraf`）。
-這可避免多 namespace 擴充時，Grafana dashboard 因 telegraf 權限缺漏而看不到 namespace 指標。
-若你的環境由平台/GitOps 統一管理 cluster RBAC，可加上 `--skip-telegraf-rbac-subject-sync` 跳過這個自動補齊步驟。
-
-另外，若你希望部署時就固定 jmeter master/slave 的節點池，可加上：
-
-- `--master-node-label <key=value>`（可重複）
-- `--slave-node-label <key=value>`（可重複）
-
-注意：
-
-- 參數格式必須是 `key=value`。
-- 沒有填時為預設行為：不限制 nodeSelector（可排程到所有可用 workload node）。
-- 腳本會同步產生 `k8s/helm/environments/runtime-overrides/<helm-env>.<namespace>.yaml`（供本地參考備查）。
-- 腳本會同步寫入 namespace 內的 ConfigMap：`jmeter-runtime-node-selector-override`（key: `override.yaml`），作為 `start_test.sh` 的唯一真實來源（Single Source of Truth）。
-
-也就是說，當你先用 `deploy_perf_stack.sh` 設定了 master/slave label 後，後續同 namespace 的 `start_test.sh` 會自動從 ConfigMap 讀取並套用相同 nodeSelector 行為，不需要再手動 `--set`。
-
-> **設計說明：** 由於 `start_test.sh` 可能在 webapp 容器內執行，無法直接讀取 host 上的本地檔案，因此 ConfigMap 是跨 Pod/Container 傳遞部署參數的唯一可靠機制。`deploy_perf_stack.sh` 產生的本地 `runtime-overrides` 檔案僅供參考備查，不影響實際部署行為。
-
-預設命名規則：
-
-- `jmeter-report-<namespace>.<base-domain>`
-- `jmeter-grafana-<namespace>.<base-domain>`
-- `jmeter-web-<namespace>.<base-domain>`
-
-範例：
-
-```bash
-# primary namespace（建立 telegraf cluster RBAC）
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --telegraf-cluster-rbac true
-
-# secondary namespace（不重建 telegraf cluster RBAC）
-./deploy_perf_stack.sh \
-  -n performance-test2 \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --telegraf-cluster-rbac false
-
-# lab 環境：自動套用 wildcard-example-com-tls
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env lab \
-  --base-domain example.com \
-  --telegraf-cluster-rbac true
-
-# 指定三個 ingress 共用同一張 wildcard 憑證 secret
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --tls-secret-name wildcard-mgnt-mvdis-gov-tw-tls \
-  --telegraf-cluster-rbac true
-
-# 需要時也可分別指定不同 ingress secret
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --report-tls-secret-name report-wildcard-tls \
-  --grafana-tls-secret-name grafana-wildcard-tls \
-  --webapp-tls-secret-name webapp-wildcard-tls \
-  --telegraf-cluster-rbac true
-
-# 指定 master/slave 分別部署到不同 label 節點
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --master-node-label pt-group=group-1-m \
-  --slave-node-label pt-group=group-1
-
-# 可重複傳入多組 label（同一個 nodeSelector map）
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --master-node-label role=jmeter \
-  --master-node-label tier=perf \
-  --slave-node-label role=jmeter \
-  --slave-node-label tier=perf
-```
-
-若你要指定既有網域命名，也可直接傳入明確 host：
-
-```bash
-./deploy_perf_stack.sh \
-  -n performance-test2 \
-  --helm-env dr-prod \
-  --report-host jmeter-report-dr2.mgnt.mvdis.gov.tw \
-  --grafana-host jmeter-grafana-dr2.mgnt.mvdis.gov.tw \
-  --webapp-host jmeter-web-dr2.mgnt.mvdis.gov.tw \
-  --telegraf-cluster-rbac false
-
-# lab環境完整範例(視情況決定telegraf-cluster-rbac)
-./deploy_perf_stack.sh \
-  -n performance-test2 \
-  --helm-env lab \
-  --report-host report1-dr.mgnt.mvdis.gov.tw \
-  --grafana-host grafana2-dr.mgnt.mvdis.gov.tw \
-  --webapp-host jmeter-web2-dr.mgnt.mvdis.gov.tw \
-  --master-node-label pt-group=group-1-m \
-  --slave-node-label pt-group=group-1 \
-  --telegraf-cluster-rbac false
-```
-
-# dr環境完整範例(視情況決定telegraf-cluster-rbac)
-
-```bash
-./deploy_perf_stack.sh \
-  -n performance-test \
-  --helm-env dr-prod \
-  --apply-env-resources \
-  ----ingress-class-name nginx \
-  --report-host jmeter-report1-dr.mgnt.mvdis.gov.tw \
-  --grafana-host jmeter-grafana1-dr.mgnt.mvdis.gov.tw \
-  --webapp-host jmeter-web1-dr.mgnt.mvdis.gov.tw \
-  --telegraf-cluster-rbac false
-
-./deploy_perf_stack.sh \
-  -n performance-test1 \
-  --helm-env dr-prod \
-  --apply-env-resources \
-  --report-host jmeter-report1-dr.mgnt.mvdis.gov.tw \
-  --grafana-host jmeter-grafana1-dr.mgnt.mvdis.gov.tw \
-  --webapp-host jmeter-web1-dr.mgnt.mvdis.gov.tw \
-  --master-node-label pt-group=group-1-m \
-  --slave-node-label pt-group=group-1 \
-  --telegraf-cluster-rbac false
-```
-
-## Webapp 持久化補充（Scenario / Data）
-
-## Ingress Wildcard TLS 憑證建立
-
-若你希望 lab 與 dr-prod 內多個站台共用同一張自簽 wildcard 憑證，可先在本機用 OpenSSL 產生對應憑證與私鑰，再建立成 Kubernetes TLS secret。
-
-### Lab：`*.example.com`
-
-```bash
-mkdir -p tmp/tls/lab
-
-openssl req -x509 -nodes -newkey rsa:4096 -sha256 -days 825 \
-  -keyout tmp/tls/lab/wildcard-example.com.key \
-  -out tmp/tls/lab/wildcard-example.com.crt \
-  -subj "/CN=*.example.com" \
-  -addext "subjectAltName=DNS:*.example.com,DNS:example.com"
-
-kubectl -n performance-test create secret tls wildcard-example-com-tls \
-  --cert=tmp/tls/lab/wildcard-example.com.crt \
-  --key=tmp/tls/lab/wildcard-example.com.key \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-若要套用到第二個 namespace，只要改 namespace 重跑最後一段：
-
-```bash
-kubectl -n performance-test2 create secret tls wildcard-example-com-tls \
-  --cert=tmp/tls/lab/wildcard-example.com.crt \
-  --key=tmp/tls/lab/wildcard-example.com.key \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-### DR-Prod：`*.mgnt.mvdis.gov.tw`
-
-```bash
-mkdir -p tmp/tls/dr-prod
-
-openssl req -x509 -nodes -newkey rsa:4096 -sha256 -days 825 \
-  -keyout tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
-  -out tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
-  -subj "/CN=*.mgnt.mvdis.gov.tw" \
-  -addext "subjectAltName=DNS:*.mgnt.mvdis.gov.tw,DNS:mgnt.mvdis.gov.tw"
-
-kubectl -n performance-test create secret tls wildcard-mgnt-mvdis-gov-tw-tls \
-  --cert=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
-  --key=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-第二個 namespace 範例：
-
-```bash
-kubectl -n performance-test2 create secret tls wildcard-mgnt-mvdis-gov-tw-tls \
-  --cert=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
-  --key=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-### 驗證 secret 與 Ingress TLS 設定
-
-```bash
-kubectl -n performance-test get secret wildcard-example-com-tls
-kubectl -n performance-test get ingress report-server grafana-ingress jmeter-webapp -o yaml | grep -E 'host:|secretName:'
-```
-
-注意事項：
-
-- 自簽憑證只適合內部測試或受控 lab/dr 環境；瀏覽器與用戶端需自行信任該 CA/憑證。
-- 同一張 wildcard 憑證可覆蓋 `jmeter-report-<namespace>.<base-domain>`、`jmeter-grafana-<namespace>.<base-domain>`、`jmeter-web-<namespace>.<base-domain>`。
-- `deploy_perf_stack.sh` 只會把 Ingress 指到指定 `secretName`，不會自動建立 TLS secret；請先建立 secret 再部署。
-
-為避免重建 image 或重新部署時覆蓋環境資料，webapp 另有兩個專用 PVC 掛載：
-
-- `/workspace/scenario`：保存專案 JMX、`.env`、`report-meta.env` 與 `scenario/dataset`
-- `/workspace/webapp/data`：保存 `users.json`、`upload_owners.json`、`webapp/data/secrets/*`
-
-### 設定管理頁面生效與重啟行為（重要）
-
-請特別注意：webapp container 內的 `/workspace` 內容主要來自 **webapp image build 當下**打包進去的檔案；目前持久化掛載只涵蓋上面兩個目錄（`/workspace/scenario`、`/workspace/webapp/data`）。
-
-這代表：
-
-- 你在本地 workspace 修改 `config/*`、`k8s/helm/environments/values/*` 等檔案，不會自動改變「已在 cluster 執行中」的 webapp 行為。
-- 你在 webapp「設定管理」頁面修改到非持久化路徑的檔案時，變更可能只存在於當前 Pod/container。
-- 一旦 webapp Pod 重建/重啟（例如 rollout restart、節點漂移、升版），這類變更可能會回到 image 內原始內容（看起來像被 reset）。
-
-若要讓這類設定真正穩定生效，建議流程：
-
-1. 在 repo 內更新目標設定檔。
-2. 重 build 並推送新的 webapp image。
-3. `helm upgrade` 指向新 image tag（或 digest），再 rollout。
-
-若希望「設定管理」頁面的特定設定可跨重啟保留，需另外把對應路徑改為 PVC/ConfigMap/Secret 掛載，不建議只依賴 container 可寫層。
-
-首次部署且 `webapp/data` PVC 為空時，webapp 需要 bootstrap admin（由 Secret 注入）：
-
-```bash
-kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-bootstrap-admin-secret.yaml
-```
-
-dr-prod 可用：
-
-```bash
-kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/webapp-bootstrap-admin-secret.yaml
-```
-
-> **注意**：Secret 與 ConfigMap 的內容皆以環境變數注入容器，容器啟動後不會自動熱更新。
-> 每次 `apply` 修改後，必須重啟 webapp 才能讓新值生效：
-> ```bash
-> kubectl -n <namespace> rollout restart deploy/jmeter-webapp
-> kubectl -n <namespace> rollout status deploy/jmeter-webapp --timeout=240s
-> ```
-
-另外，webapp 的 Logs 頁面目前也支援透過 `ConfigMap` 注入 JMeter log 忽略規則，避免只為了調整過濾條件而重打 image。
-
-- lab：`k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml`
-- dr-prod：`k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml`
-
-目前支援以下三組設定（皆為「每行一條 pattern」）：
-
-- `WEBAPP_IGNORED_JMETER_WARN_PATTERNS`
-- `WEBAPP_IGNORED_JMETER_INFO_PATTERNS`
-- `WEBAPP_IGNORED_JMETER_ERROR_PATTERNS`
-
-首次部署或首次啟用這套機制時，建議順序如下：
-
-```bash
-# 1) 先建立 bootstrap admin secret
-kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-bootstrap-admin-secret.yaml
-
-# 2) 再建立 log filter configmap
-kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml
-
-# 3) 最後做 Helm upgrade/install
-helm dependency build k8s/helm
-helm upgrade --install perf-stack k8s/helm \
-  -n performance-test --create-namespace \
-  -f k8s/helm/environments/values/lab.yaml
-```
-
-> 原因：webapp deployment 會透過 `envFrom.configMapRef` 讀取 `jmeter-webapp-log-filter`。若先升版、`ConfigMap` 尚未存在，Pod 建立時可能因缺少參照來源而失敗。
-
-若之後只是調整忽略規則內容，而沒有修改 Helm chart/template，通常不需要再做 `helm upgrade`；只要重新套用 `ConfigMap` 並重啟 webapp 即可（ConfigMap 以 `envFrom` 注入，Pod 不重啟不會讀到新值）：
-
-```bash
-kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml
-kubectl -n performance-test rollout restart deploy/jmeter-webapp
-kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
-```
-
-若要部署到第二個 namespace，例如 `performance-test2`，直接改 namespace 參數即可：
-
-```bash
-kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/webapp-bootstrap-admin-secret.yaml
-kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml
-kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
-```
-
-### Image Pull Secret（bmcharbor-auth）
-
-`dr-prod` values 會使用：
-
-- `global.imagePullSecrets: [bmcharbor-auth]`
-
-若 namespace 尚未建立此 secret，`jmeter-master`/`jmeter-slave` 會出現 `FailedToRetrieveImagePullSecret` 或 `ImagePullBackOff`。
-
-專案已提供範本（不含真實憑證）：
-
-- `k8s/helm/environments/resources/dr-prod/image-pull-secret.yaml`
-- `k8s/helm/environments/resources/lab/image-pull-secret.yaml`
-
-建議做法：
-
-1. 直接編輯 `.dockerconfigjson` 內的 `username` / `password` / `auth`
-2. `auth` 請填 `echo -n 'username:password' | base64 -w0` 的結果
-3. 套用到目標 namespace（dr-prod 建議不要提交真實憑證）
-
-```bash
-kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/image-pull-secret.yaml
-```
-
-若你希望部署時順便自動套用該環境 `resources` 目錄，可使用：
-
-```bash
-./deploy_perf_stack.sh \
-  -n performance-test2 \
-  --helm-env dr-prod \
-  --base-domain mgnt.mvdis.gov.tw \
-  --apply-env-resources
-```
-
-`--apply-env-resources` 會在 Helm 前自動套用 `k8s/helm/environments/resources/<helm-env>/*.yaml`。
-
-再執行 Helm：
-
-```bash
-helm dependency build k8s/helm
-helm upgrade --install perf-stack k8s/helm \
-  -n performance-test --create-namespace \
-  -f k8s/helm/environments/values/lab.yaml
-```
-
-> 每次你有修改 `k8s/helm/charts/*` 子 chart（例如 webapp template / values）後，請先執行 `helm dependency build k8s/helm` 再 `helm upgrade`，避免實際部署仍套用舊版子 chart 內容。
-
-若首次部署後 `scenario` PVC 為空，可把 repo 內既有資料拷貝到 webapp 掛載路徑：
-
-```bash
-# 1) 取得 webapp pod
-WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
-
-# 2) 建立目錄（若已存在可忽略）
-kubectl -n performance-test exec "$WEBAPP_POD" -- mkdir -p /workspace/scenario/dataset
-
-# 3) 拷貝單一 JMeter 專案目錄（例：demoweb）
-kubectl -n performance-test cp scenario/demoweb "$WEBAPP_POD":/workspace/scenario/demoweb
-
-# 4) 拷貝單一 dataset 檔案（例：test-dataset.csv）
-kubectl -n performance-test cp scenario/dataset/test-dataset.csv "$WEBAPP_POD":/workspace/scenario/dataset/test-dataset.csv
-
-# 5) 驗證檔案已存在
-kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario
-kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario/dataset
-```
-
-若你要一次同步整個 `scenario` 目錄（包含多個專案與 dataset），可改用：
-
-```bash
-WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
-kubectl -n performance-test cp scenario/. "$WEBAPP_POD":/workspace/scenario/
-```
-
-若你有在環境內新增帳號（例如 `test1`），建議在升版前先備份 `users.json`：
-
-```bash
-# 備份 users.json 到本機
-WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
-kubectl -n performance-test cp "$WEBAPP_POD":/workspace/webapp/data/users.json ./users.backup.json
-```
-
-若因 PVC 重建或設定異動導致帳號遺失，可回寫：
-
-```bash
-WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
-kubectl -n performance-test cp ./users.backup.json "$WEBAPP_POD":/workspace/webapp/data/users.json
-kubectl -n performance-test rollout restart deploy/jmeter-webapp
-kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
-```
-
-> 若 `webapp/data` PVC 被刪除重建，舊 `users.json` 不會保留；此時沒有備份就只能用 bootstrap admin 重新建立帳號。
-
-`start_test.sh` 仍可維持現有 `scenario/...` 相對路徑，不需調整，只要掛載點保持 `/workspace/scenario`。
-
-### 專案管理頁：建立新專案（含模板自動帶入）
-
-在 webapp 的「專案管理」頁面可直接輸入新專案名稱並建立。
-
-建立成功時會自動建立 `scenario/<project>/`，並複製以下三個檔案：
-
-- `.env`
-- `jmeter-system.properties`
-- `report-meta.env`
-
-模板來源優先序：
-
-1. `/workspace/scenario/_template`（PVC 內模板）
-2. `webapp/app/project_template_defaults`（webapp 內建 fallback）
-
-建立完成後，頁面會立即切換到新專案並自動讀取上述檔案內容。
-
-> 若你在 PVC 內沒有 `_template`，功能仍可透過 webapp 內建 fallback 模板正常建立。
-
-請務必遵循此原則，才能避免 PVC 衝突與測試異常。
-
-## Webapp 管理介面（FastAPI）
-
-![Webapp 管理介面畫面](docs/images/webapp-ui.png)
-
-本專案包含一個 `webapp` 子系統（`webapp/`），提供網頁化操作能力，與本 starterkit 的關係如下：
-
-- `start_test.sh` / `stop_test.sh` 仍是核心執行腳本；webapp 是其 UI 管理入口
-- webapp 透過 Helm / kubectl 操作同一套 k8s 資源（同 namespace）
-- webapp 的報表與 master 共用 PVC，才能即時瀏覽測試報告
-- 參數治理採三層覆蓋用詞：環境值檔（`k8s/helm/environments/values/*.yaml`）→ 專案覆寫值（`scenario/<project>/deploy.values.yaml`）→ 本次執行值（`start_test.sh`）
-- Logs 頁面的 JMeter `WARN / INFO / ERROR` 忽略清單已改由 `ConfigMap` 注入，預設檔位於 `k8s/helm/environments/resources/*/webapp-log-filter-configmap.yaml`
-
-常見流程（摘要）：
-
-1. 打包並推送 `docker.io/isaac0815/jmeter-webapp:latest`
-2. 用 `skopeo inspect` 確認遠端 `Digest`
-3. 在 k8s 執行 `kubectl rollout restart deploy/jmeter-webapp`
-4. 以 pod `imageID`（`@sha256:...`）比對遠端 digest
-
-若只是調整 Logs 頁面的忽略規則，流程可再簡化為：
-
-1. 編輯 `k8s/helm/environments/resources/*/webapp-log-filter-configmap.yaml`
-2. `kubectl apply -f ...webapp-log-filter-configmap.yaml`
-3. `kubectl rollout restart deploy/jmeter-webapp`
-
-### Webapp 新增功能：資料庫還原（模擬送出）
-
-- 新增頁面：`/db-restore`
-- 可選環境來源：`config/jmeter.<env>.env`
-- 需在各環境檔新增：`JMETER_FLASHBACK_DB_API=<endpoint-url>`
-- 功能按鈕（目前僅預覽，不會真的發送）
-  1. 建立 Flashback 任務
-  2. 查詢任務狀態
-  3. 查詢所有任務
-  4. 取消任務
-
-API Key / Token 請放在（已加入忽略規則）：
-
-- `webapp/data/secrets/db_restore_tokens.json`
-
-範例格式：
-
-```json
-{
-  "lab": "your-lab-token",
-  "dr-prod": "your-dr-prod-token"
-}
-```
-
-完整 webapp 說明（含登入權限、image 推送、digest 驗證、k8s 啟動）請見：`webapp/README.md`
-
-若遇到「頁面卡住 / 推版後仍舊版 / 找不到 webapp pod」等問題，可直接參考 `webapp/README.md` 的 **常見問題排查（Troubleshooting）** 章節。
-
 
 ## Features
 
@@ -787,8 +147,17 @@ kubectl cp -n <namespace> <master-pod-id>:/report/<result> ${PWD}/<local-result-
 ```
 You can do this for the generated report and the JTL for example.  
 
+# 本專案新增功能與修改（再製版）
 
-## 本專案新增功能與修改（客製版）
+此客製版已將原本以 `kubectl create -R -f k8s/` 為主的部署方式，改為以 Helm 為主的管理模式，並提供Web GUI操作介面。
+
+![Webapp 管理介面畫面](docs/images/webapp-index.png)
+
+- 基礎元件以 `perf-stack` release 管理（環境值檔：`k8s/helm/environments/values/*.yaml`）
+- 測試執行期資源以 `jmeter-runtime` release 管理（由 `start_test.sh` 動態部署）
+- 目的：分離「長駐基礎設施」與「每次測試工作負載」，降低資源 ownership 衝突並提升可維運性
+- 目前 `metric-server`、`telegraf-operator` 仍維持非 Helm 管理（`kubectl apply -f`），主要因為這兩項元件在許多現有 K8s 平台環境中可能已經預先部署或由平台統一管理，為避免重複安裝或資源衝突，故獨立於本專案 Helm 管理之外，僅作參考，或本地乾淨的lab環境部署用。
+- 系統整體部署可透過Skill `@lab-webapp-redeploy` 來完成
 
 快速導覽：
 
@@ -800,17 +169,25 @@ You can do this for the generated report and the JTL for example.
 - [5) jmeter-system.properties 自動帶入](#5-jmetersystemproperties-自動帶入)
 - [6) CSV 分檔流程強化](#6-csv-分檔流程強化)
 - [7) JMeter runtime 參數（建議改為環境分檔）](#7-jmeter-runtime-參數建議改為環境分檔)
-- [8) 三層覆蓋優先序（環境值檔 / 專案覆寫值 / 本次執行值）](#8-三層覆蓋優先序環境值檔--專案覆寫值--本次執行值)
+- [8) K8S架構 & Helm管理與部署](#8-k8s架構--helm管理與部署)
+- [9) 三層覆蓋優先序（環境值檔 / 專案覆寫值 / 本次執行值）](#9-三層覆蓋優先序環境值檔--專案覆寫值--本次執行值)
+- [10) Webapp 管理後臺（FastAPI）](#10-webapp-管理後臺fastapi)
+- [11) Ingress Wildcard TLS 憑證建立](#11-ingress-wildcard-tls-憑證建立)
+- [12) 支援 JMeter Concurrency Thread Group Plugin（CTG）](#12-支援-jmeter-concurrency-thread-group-pluginctg)
 
-### 專案目錄結構描述
+
+## 專案目錄結構描述
 
 ```text
 jmeter-k8s-starterkit/
-├── start_test.sh / stop_test.sh / reset_pvc.sh / cleanup_released_pv.sh  # 核心操作腳本
+├── start_test.sh / stop_test.sh / reset_pvc.sh / cleanup_released_pv.sh / deploy_perf_stack.sh  # 核心操作腳本
 ├── config/                # 環境層級參數（jmeter.<env>.env）
+├── docker/                # Docker 相關設定(含jmeter自訂Dockerfile)
 ├── k8s/helm/              # Helm umbrella chart 與環境 values
 ├── scenario/              # 測試專案（JMX、.env、report-meta.env、deploy.values.yaml）
 │   ├── _template/         # 專案模板
+│   ├── dataset/           # Jmeter dataset csv檔案
+│   ├── module/            # Jmeter test fragment
 │   └── <project>/         # 實際測試專案（例如 demoweb、my-scenario）
 ├── report/                # 測試產出報表（HTML、statistics.json、內容資源）
 ├── webapp/                # FastAPI 管理介面（UI + API）
@@ -823,195 +200,79 @@ jmeter-k8s-starterkit/
 - `k8s/helm/environments/values/*.yaml` 放環境值，`scenario/<project>/deploy.values.yaml` 放專案覆寫值。
 - `webapp/` 透過同一套腳本與 Helm 資源操作測試流程，並讀取共用 PVC 中的報表。
 
-### 1) 提供額外參數檔 
+## 版本里程碑
 
-為了把「環境基線」與「專案參數」分離，本專案提供以下參數檔：
+### `835e5f8f`：Helm 目錄架構與管理方式調整
 
-- `config/jmeter.<env>.env`
-  - 用途：放環境層級設定（例如 lab / dr-prod 的 JVM heap 與共用參數）
-  - 範例：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
-  - 讀取時機：`start_test.sh` 依 `--helm-env` 或 fallback 規則載入
+<details>
+  <summary>點擊展開詳細內容</summary>
 
-- `scenario/<project>/.env`
-  - 用途：放該專案測試參數（threads、duration、host、port…）
-  - 作用：啟動時會轉成 JMeter `-G` 參數傳入 slave/master
+> **Commit：** `835e5f8f32d0ee6638eca2a8aef38d7010c1b8f5`（2026-03-06）
 
-- `scenario/<project>/jmeter-system.properties`
-  - 用途：放 JMeter system properties（report granularity、apdex 等）
-  - 作用：若存在，會自動複製到 master/slave 並以 `-S` 帶入
+**定位：** 將專案部署架構調整為以 Helm 目錄與 release 為核心的重大架構變更。
 
-- `scenario/<project>/report-meta.env`
-  - 用途：放報表 metadata（Environment / Versions / Notes）
-  - 作用：搭配 `-r` 產報時注入到 HTML 報表
+**主要內容：**
 
-建議配置原則：
+- 調整 Helm chart 目錄架構
+- 建立以 Helm 管理 Kubernetes 資源的部署方式
+- 區分基礎元件與測試執行期資源的管理邊界
 
-- 環境共用值放 `config/jmeter.<env>.env`
-- 專案差異值放 `scenario/<project>/.env`
-- 報表描述資訊放 `scenario/<project>/report-meta.env`
+</details>
 
+### `30de8b2`：JMeter Webapp 重大功能
 
-### 2) 參數前綴預處理（避免環境變數污染）
-- 測試參數檔 `scenario/<project>/.env` 會先轉為 `JMETERTEST_*` 暫存變數，再轉成 JMeter `-G` 全域參數。
-- 報表 metadata 檔（預設JMeter project目錄下 `report-meta.env`）會先轉為 `JMETERREPORT_*` 暫存變數，供報表注入使用。
-- 原始 `.env` / `report-meta.env` 不會被改寫。
+<details>
+  <summary>點擊展開詳細內容</summary>
 
-> 詳細說明請見：`docs/JMETER_PARAMETERS_PREFIX_PREPROCESS_GUIDE.md`
+> **Commit：** `30de8b2`（2026-03-06）
 
----
+**定位：** 新增 JMeter Webapp 管理介面的重大功能里程碑。
 
-### 3) 新增 CLI 參數
-`start_test.sh` 除了原本參數外，新增：
+**主要內容：**
 
-- `-E <env>`：測試環境（如 `prod/uat/sit/pt`）
-- `-V <versions>`：版本資訊（建議以 `,` 分隔）
-- `-N <note>`：備註
-- `-F <file>`：指定 metadata 檔名（預設 `report-meta.env`，相對路徑會視為 `scenario/<project>/` 底下）
-- `--helm-env <name>`：指定 Helm 環境值檔名稱（對應 `k8s/helm/environments/values/<name>.yaml`，預設 `lab`）
-- `--helm-release <name>`：指定 jmeter runtime 的 Helm release 名稱（預設 `jmeter-runtime`）
-- `--helm-chart <path>`：指定 jmeter runtime Helm chart 路徑（預設 `k8s/helm/charts/jmeter`）
-- `--jmeter-env-file <path>`：明確指定 JMeter runtime env 檔（優先於 `config/jmeter.<helm-env>.env` / `config/jmeter.env`）
+- 新增專案管理與 JMX 上傳功能
+- 新增報告產生、篩選與下載功能
+- 新增測試啟動、停止與即時狀態功能
+- 新增使用者建立、群組指派、密碼重設與刪除功能
+- 補上 Helm deployment 與 Webapp 相依套件配置
 
----
+</details>
 
-### 3-1) Thread 分配策略（目前：無條件進位平均）
+### `af9311b4`：Webapp Helm 環境結構重構
 
-當啟用 `--max-threads`（> 0）時，`start_test.sh` 會先解析支援的 thread group，計算總 thread 與目標 slave 數（`max(min-slaves, ceil(total/max-threads))`），再對每個 thread group 採用「無條件進位平均」分配：
+<details>
+  <summary>點擊展開詳細內容</summary>
 
-- `per_slave = ceil(threads / slaves)`
-- 每個 slave 皆分配 `per_slave`
+> **Commit：** `af9311b4c3df53ec8e4fa0b3c6ca0295f692ff46`（2026-04-28）
 
-這種做法的特性：
+**定位：** 重構 Helm 環境結構與 Webapp 設定管理方式的重要版本。
 
-- 每個 slave 都能參與各 thread group，較容易對齊 CSV 平均分檔策略
-- 可能使每個 thread group 的實際總 thread 高於原始 `.env` / JMX 定義（屬於可接受的模型上浮）
+**主要內容：**
 
-#### 可優化方向：策略切換機制（規劃中）
+- 將 Helm 環境 YAML 移至 `k8s/helm/environments/values/` 新目錄結構
+- 為 `dr-prod` 與 `lab` 更新環境設定檔
+- 重新建立 Webapp 與 Oracle Flashback 所需的 Secrets 和 ConfigMaps
+- 更新 `start_test.sh` 與應用程式對新環境目錄結構的引用
+- 同步更新 README 中 Secrets 與 ConfigMaps 的文件位置
 
-目前預設採用無條件進位平均；後續可考慮新增可切換策略，例如：
+</details>
 
-- `balanced`：餘數平攤，總 thread 與原始定義一致
-- `ceil-all`：每個 slave 皆使用 `ceil(threads/slaves)`（現行），提升參與度但總 thread 可能上浮
-- `balanced-with-min1`：在可行時先保證每個 slave 至少 1 thread，再平攤剩餘量
+### `b6486bd`：Thread 配置策略轉折點
 
-建議未來可加參數（如 `--thread-distribution-policy`）做策略切換，兼顧「總壓力精準」與「每個 slave 都參與」兩種需求。
+<details>
+  <summary>點擊展開詳細內容</summary>
 
-若要讓不同 slave 跑不同 thread 數，且仍維持 master remote（`--remotestart`）模式，建議採用以下可行作法：
+> **Commit：** `b6486bd537a6674b8f74b524d724bb5846ca2ee2`（2026-06-09）
 
-- 核心限制：單次 remote 啟動時，master 下發的 `-G` 為全域參數，無法直接對不同 slave 發不同值。
-- 建議方案：改為「參數先全域下發，slave 再依自身身分（pod 名稱/hostname）選取對應值」。
+**定位：** 此版本為 webapp 驅動測試流程中，**切換到「Min Slaves + Max Threads」分割配置 threads 策略之前**的穩定可用基準點。
 
-實作步驟（建議最小改動路徑）：
+**用途：** 若需回溯舊行為、比對新舊分配邏輯差異，或進行回歸驗證，可優先以此 commit 作為 baseline。
 
-1. 在專案目錄新增 per-slave 對照檔（例如 CSV/JSON），內容包含 `slave_id -> thread/rampup/duration`。
-2. `start_test.sh` 在啟動前，將此對照檔複製到所有 slave pod（類似既有 JMX/CSV 上傳流程）。
-3. 在 JMX 加入 setUp Thread Group（建議 JSR223 Groovy）：
-  - 讀取本機 `hostname` 或 pod 名稱
-  - 從對照檔找出該 slave 專屬參數
-  - 寫入本地 engine 可讀取的屬性（供後續 Thread Group 取用）
-4. 後續 Thread Group 仍用 `__P(...)`/屬性引用，但實際值由各 slave 的 setUp 邏輯決定。
+</details>
 
-此作法的優點：
+## 快速部署（不考慮多Namespace的乾淨環境）
 
-- 保持 master remote 架構（統一啟停、集中流程不變）
-- 可讓各 slave 採用不同 thread 配置
-- 不需改成每台 slave 各自獨立啟動測試
-
----
-
-### 4) 報表 metadata 自動注入（搭配 `-r`）
-啟用 `-r` 產報後，會將以下資訊注入 HTML 報表：
-- Environment
-- App Versions
-- Notes
-
-也會先做基本 HTML escape，降低特殊字元造成的版面問題。
-
----
-
-### 5) `jmeter-system.properties` 自動帶入
-若 `scenario/<project>/jmeter-system.properties` 存在：
-- 會自動複製到 master/slave
-- 執行時自動加上 `-S <path>/jmeter-system.properties`
-- 並擷取部分 report 參數轉為 `-J...`（例如 granularity / apdex）
-
-> 根目錄不再放 `jmeter-system.properties` 範例檔。請使用模板：
-> `scenario/_template/jmeter-system.properties`
-
-```bash
-# 以 demoweb 專案為例
-cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.properties
-```
-
----
-
-### 6) CSV 分檔流程強化
-啟用 `-c` 時：
-- 先保留原始 CSV header
-- 將資料列打散（shuffle）
-- 依最終 slave 數切分後，每份再補回 header
-- 分別上傳到各 slave pod
-
----
-
-### 7) JMeter runtime 參數（建議改為環境分檔）
-`start_test.sh` 會依序載入以下檔案（先找到先用）：
-
-1. `--jmeter-env-file <path>`（手動指定）
-2. `config/jmeter.<helm-env>.env`（例如 `config/jmeter.lab.env`、`config/jmeter.dr-prod.env`）
-3. `config/jmeter.env`（fallback）
-
-建議做法：
-- `master/slave` **resources** 主要放 Helm values（`k8s/helm/environments/values/*.yaml` 或 `scenario/<project>/deploy.values.yaml`）
-- `JMETER_MASTER_JVM_HEAP_ARGS` / `JMETER_SLAVE_JVM_HEAP_ARGS` 放在 `config/jmeter.<env>.env`
-
-`config/jmeter.env` 可保留為共用 fallback，不再作為主要環境配置入口。
-
-環境基線（建議）：
-
-| 項目 | lab | dr-prod |
-|---|---|---|
-| JMeter Master Resources | 依 chart 預設或專案覆蓋 | requests: 1000m/2048Mi, limits: 2000m/4096Mi |
-| JMeter Slave Resources | 依 chart 預設或專案覆蓋 | requests: 1000m/1024Mi, limits: 2000m/2048Mi |
-| JVM Heap（Master） | `config/jmeter.lab.env` | `config/jmeter.dr-prod.env` |
-| JVM Heap（Slave） | `config/jmeter.lab.env` | `config/jmeter.dr-prod.env` |
-
-對應檔案：
-- Helm resources：`k8s/helm/environments/values/lab.yaml`、`k8s/helm/environments/values/dr-prod.yaml`
-- JVM heap：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
-
-可另外用 `scenario/<project>/deploy.values.yaml` 定義專案級部署參數，達成「環境（lab/dr-prod） + 專案 + 本次測試」三層覆蓋。
-
-### 8) 三層覆蓋優先序（環境值檔 / 專案覆寫值 / 本次執行值）
-
-延伸閱讀：[webapp/README.md 的同名章節](webapp/README.md#8-三層覆蓋優先序環境值檔--專案覆寫值--本次執行值)
-
-三層覆蓋優先序（由低到高）如下：
-
-| 層級 | 來源 | 作用 | 優先序 |
-|---|---|---|---|
-| 1 | `k8s/helm/environments/values/<env>.yaml` | 環境共用基線（lab/dr-prod） | 低 |
-| 2 | `scenario/<project>/deploy.values.yaml` | 專案固定需求（例如 demoweb） | 中 |
-| 3 | `start_test.sh` 本次執行產生的 run values | 本次測試動態參數（例如 `-i`） | 高 |
-
-範例（同一個 key 衝突時誰生效）：
-- `lab.yaml` 設 `slaves.parallelism: 1`
-- `scenario/demoweb/deploy.values.yaml` 設 `slaves.parallelism: 4`
-- 命令列帶 `-i 2`
-
-最終會使用 `2`（因為本次執行層優先序最高）。
-
-已提供範本：`scenario/_template/deploy.values.yaml`
-
-```bash
-# 以 demoweb 專案為例
-cp scenario/_template/deploy.values.yaml scenario/demoweb/deploy.values.yaml
-```
-
----
-
-## 快速使用（建議）
-
+首次部署 & 驅動測試
 ```
 # 建議部署至 performance-test namespace
 
@@ -1034,6 +295,16 @@ kubectl delete -f k8s/telegraf-operator.yaml
 kubectl delete -f k8s/metric-server.yaml
 ```
 
+測試helm渲染：
+(測試後pvc可能只能手動建立)
+```bash
+helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=true
+
+helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-master.yaml 
+
+```
+
+啟動測試：
 ```bash
 ./start_test.sh -j my-scenario.jmx -n default --min-slaves 2 --max-threads 300 -c -m -r \
   --helm-env lab \
@@ -1048,54 +319,17 @@ kubectl delete -f k8s/metric-server.yaml
 ```bash
 ./stop_test.sh -n default
 
+#若未傳入 namespace，會自動使用 `default`，並輸出提示訊息。
+./stop_test.sh
+# [INFO] Namespace not provided, using default namespace: default
+
 # 停測後一併卸載 jmeter runtime (helm)
 ./stop_test.sh -n default -u --helm-release jmeter-runtime
-```
-
-測試helm渲染：
-(測試後pvc可能只能手動建立)
-```bash
-helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=true
-helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test --set pvc.enabled=false
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml
-helm template perf-stack k8s/helm -n performance-test -f k8s/helm/environments/values/dr-prod.yaml
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -s charts/jmeter/templates/jmeter-master.yaml 
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -s charts/jmeter/templates/jmeter-pvc.yaml 
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -s charts/webapp/templates/webapp.yaml 
-
-
-helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test -f k8s/helm/environments/values/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s templates/jmeter-master.yaml 
-
-helm template jmeter-runtime k8s/helm/charts/influxdb -n performance-test -f k8s/helm/environments/values/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s templates/influxdb-deployment.yaml 
-
-helm template jmeter-runtime k8s/helm/charts/jmeter -n performance-test -f k8s/helm/environments/values/dr-prod.yaml  -s templates/jmeter-master.yaml 
-
-helm template jmeter-runtime k8s/helm/charts/influxdb -n performance-test -f k8s/helm/environments/values/dr-prod.yaml -s templates/influxdb-deployment.yaml 
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-master.yaml 
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/dr-prod.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-pvc.yaml
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-master.yaml 
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-pvc.yaml
-
-helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environments/values/lab.yaml -f scenario/demoweb/deploy.values.yaml -s charts/jmeter/templates/jmeter-slave-service.yaml
 ```
 
 > 建議：日常操作優先使用「僅 stoptest」；不要每次都 `-u`。在 `Retain` 類型 StorageClass 下，反覆刪除 PVC 會造成大量 `Released` PV 累積。
 >
 > 本專案 jmeter chart 預設已設定 `pvc.keepOnUninstall: true`，即使 `helm uninstall jmeter-runtime`，也會保留 `jmeter-data-dir-pvc`，以避免持續產生新 PV。
-
-若未傳入 namespace，會自動使用 `default`，並輸出提示訊息。
-
-```bash
-./stop_test.sh
-# [INFO] Namespace not provided, using default namespace: default
-```
 
 ### PVC 整顆重置（含刪除 PVC 物件）
 
@@ -1129,7 +363,7 @@ helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environmen
 ./cleanup_released_pv.sh -n performance-test -c jmeter-data-dir-pvc --storage-class nfs-csi --execute
 ```
 
-## 標準操作流程（建議）
+## 驅動測試標準操作流程（建議）
 
 `hostAliases` 環境策略：
 
@@ -1173,7 +407,7 @@ helm template jmeter-runtime k8s/helm -n performance-test -f k8s/helm/environmen
 
 > 參數說明可用：`./start_test.sh -h`、`./stop_test.sh -h`
 
-## 最短指令（直接複製）
+## 最短指令部署與驅動測試
 
 ### Lab
 
@@ -1272,147 +506,800 @@ influxdb:
 
 - `retentionDays` 會在 InfluxDB 啟動後自動建立對應的 retention policy，並設成 telegraf 資料庫的預設 RP。
 
-## Oracle Flashback 資料庫還原功能
+## 新增功能與修改項目
+### 1) 提供額外參數檔 
 
-### 功能介紹
+為了把「環境基線」與「專案參數」分離，本專案提供以下參數檔：
 
-Webapp 提供 Oracle Flashback 資料庫還原功能，通過 SSH 連接到 Oracle 服務器執行還原操作。此功能支持以下 5 項操作：
+- `config/jmeter.<env>.env`
+  - 用途：放環境層級設定（例如 lab / dr-prod 的 JVM heap 與共用參數）
+  - 範例：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
+  - 讀取時機：`start_test.sh` 依 `--helm-env` 或 fallback 規則載入
 
-1. **建立還原點** (`create_rp.sh`)：為 PDB 建立 Oracle Flashback 還原點
-2. **查詢還原點** (`current_rp.sh`)：列出指定 PDB 的所有可用還原點
-3. **刪除還原點** (`delete_rp.sh`)：刪除指定 PDB 的還原點
-4. **查詢還原進度** (`fb_process.sh`)：查詢 Oracle 是否正在執行 Flashback Restore
-5. **執行還原** (`restore_rp.sh`)：執行 Flashback Restore 將 PDB 還原到指定的還原點
+- `scenario/<project>/.env`
+  - 用途：放該專案測試參數（threads、duration、host、port…）
+  - 作用：啟動時會轉成 JMeter `-G` 參數傳入 slave/master
 
-### SSH 連接配置
+- `scenario/<project>/jmeter-system.properties`
+  - 用途：放 JMeter system properties（report granularity、apdex 等）
+  - 作用：若存在，會自動複製到 master/slave 並以 `-S` 帶入
 
-SSH 連接配置通過 Kubernetes Secret 管理。需要為 LAB 和 DR-Prod 環境各創建一份 Secret 配置：
+- `scenario/<project>/report-meta.env`
+  - 用途：放報表 metadata（Environment / Versions / Notes）
+  - 作用：搭配 `-r` 產報時注入到 HTML 報表
 
-#### LAB 環境
+建議配置原則：
+
+- 環境共用值放 `config/jmeter.<env>.env`
+- 專案差異值放 `scenario/<project>/.env`
+- 報表描述資訊放 `scenario/<project>/report-meta.env`
+
+
+### 2) 參數前綴預處理（避免環境變數污染）
+- 測試參數檔 `scenario/<project>/.env` 會先轉為 `JMETERTEST_*` 暫存變數，再轉成 JMeter `-G` 全域參數。
+- 報表 metadata 檔（預設JMeter project目錄下 `report-meta.env`）會先轉為 `JMETERREPORT_*` 暫存變數，供報表注入使用。
+- 原始 `.env` / `report-meta.env` 不會被改寫。
+
+> 詳細說明請見：`docs/JMETER_PARAMETERS_PREFIX_PREPROCESS_GUIDE.md`
+
+---
+
+### 3) 新增 CLI 參數
+`start_test.sh` 除了原本參數外，新增：
+
+- `-E <env>`：測試環境（如 `prod/uat/sit/pt`）
+- `-V <versions>`：版本資訊（建議以 `,` 分隔）
+- `-N <note>`：備註
+- `-F <file>`：指定 metadata 檔名（預設 `report-meta.env`，相對路徑會視為 `scenario/<project>/` 底下）
+- `--helm-env <name>`：指定 Helm 環境值檔名稱（對應 `k8s/helm/environments/values/<name>.yaml`，預設 `lab`）
+- `--helm-release <name>`：指定 jmeter runtime 的 Helm release 名稱（預設 `jmeter-runtime`）
+- `--helm-chart <path>`：指定 jmeter runtime Helm chart 路徑（預設 `k8s/helm/charts/jmeter`）
+- `--jmeter-env-file <path>`：明確指定 JMeter runtime env 檔（優先於 `config/jmeter.<helm-env>.env` / `config/jmeter.env`）
+
+---
+
+### 3-1) Thread 分配策略（目前：無條件進位平均）
+
+當啟用 `--max-threads`（> 0）時，`start_test.sh` 會先解析支援的 thread group，計算總 thread 與目標 slave 數（`max(min-slaves, ceil(total/max-threads))`），再對每個 thread group 採用「無條件進位平均」分配：
+
+- `per_slave = ceil(threads / slaves)`
+- 每個 slave 皆分配 `per_slave`
+
+這種做法的特性：
+
+- 每個 slave 都能參與各 thread group，較容易對齊 CSV 平均分檔策略
+- 可能使每個 thread group 的實際總 thread 高於原始 `.env` / JMX 定義（屬於可接受的模型上浮）
+
+#### 可優化方向：策略切換機制（規劃中）
+
+目前預設採用無條件進位平均；後續可考慮新增可切換策略，例如：
+
+- `balanced`：餘數平攤，總 thread 與原始定義一致
+- `ceil-all`（現行）：每個 slave 皆使用 `ceil(threads/slaves)`，提升參與度但總 thread 可能上浮
+- `balanced-with-min1`：在可行時先保證每個 slave 至少 1 thread，再平攤剩餘量
+
+建議未來可加參數（如 `--thread-distribution-policy`）做策略切換，兼顧「總壓力精準」與「每個 slave 都參與」兩種需求。
+
+若要讓不同 slave 跑不同 thread 數，且仍維持 master remote（`--remotestart`）模式，建議採用以下可行作法：
+
+- 核心限制：單次 remote 啟動時，master 下發的 `-G` 為全域參數，無法直接對不同 slave 發不同值。
+- 建議方案：改為「參數先全域下發，slave 再依自身身分（pod 名稱/hostname）選取對應值」。
+
+實作步驟（建議最小改動路徑）：
+
+1. 在專案目錄新增 per-slave 對照檔（例如 CSV/JSON），內容包含 `slave_id -> thread/rampup/duration`。
+2. `start_test.sh` 在啟動前，將此對照檔複製到所有 slave pod（類似既有 JMX/CSV 上傳流程）。
+3. 在 JMX 加入 setUp Thread Group（建議 JSR223 Groovy）：
+  - 讀取本機 `hostname` 或 pod 名稱
+  - 從對照檔找出該 slave 專屬參數
+  - 寫入本地 engine 可讀取的屬性（供後續 Thread Group 取用）
+4. 後續 Thread Group 仍用 `__P(...)`/屬性引用，但實際值由各 slave 的 setUp 邏輯決定。
+
+此作法的優點：
+
+- 保持 master remote 架構（統一啟停、集中流程不變）
+- 可讓各 slave 採用不同 thread 配置
+- 不需改成每台 slave 各自獨立啟動測試
+
+---
+
+### 4) 報表 metadata 自動注入（搭配 `-r`）
+啟用 `-r` 產報後，會將以下資訊注入 HTML 報表：
+- Environment
+- App Versions
+- Notes
+
+也會先做基本 HTML escape，降低特殊字元造成的版面問題。
+
+---
+
+### 5) `jmeter-system.properties` 自動帶入
+若 `scenario/<project>/jmeter-system.properties` 存在：
+- 會自動複製到 master/slave
+- 執行時自動加上 `-S <path>/jmeter-system.properties`
+- 並擷取部分 report 參數轉為 `-J...`（例如 granularity / apdex）
+
+> 根目錄不再放 `jmeter-system.properties` 範例檔。請使用模板：
+> `scenario/_template/jmeter-system.properties`
 
 ```bash
-kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/oracle-flashback-secret.yaml
+# 以 demoweb 專案為例
+cp scenario/_template/jmeter-system.properties scenario/demoweb/jmeter-system.properties
 ```
 
-或手動創建：
+---
 
-```bash
-kubectl -n performance-test create secret generic oracle-flashback-ssh \
-  --from-literal=host=10.1.36.31 \
-  --from-literal=port=22 \
-  --from-literal=username=oracle \
-  --from-literal=password=<YOUR_PASSWORD> \
-  --from-literal=script_path=/home/oracle/scripts
+### 6) CSV 分檔流程強化
+啟用 `-c` 時：
+- 先保留原始 CSV header
+- 將資料列打散（shuffle）
+- 依最終 slave 數切分後，每份再補回 header
+- 分別上傳到各 slave pod
+
+---
+
+### 7) JMeter runtime 參數（建議改為環境分檔）
+`start_test.sh` 會依序載入以下檔案（先找到先用）：
+
+1. `--jmeter-env-file <path>`（手動指定）
+2. `config/jmeter.<helm-env>.env`（例如 `config/jmeter.lab.env`、`config/jmeter.dr-prod.env`）
+3. `config/jmeter.env`（fallback）
+
+建議做法：
+- `master/slave` **resources** 主要放 Helm values（`k8s/helm/environments/values/*.yaml` 或 `scenario/<project>/deploy.values.yaml`）
+- `JMETER_MASTER_JVM_HEAP_ARGS` / `JMETER_SLAVE_JVM_HEAP_ARGS` 放在 `config/jmeter.<env>.env`
+
+`config/jmeter.env` 可保留為共用 fallback，不再作為主要環境配置入口。
+
+環境基線（建議）：
+
+| 項目 | lab | dr-prod |
+|---|---|---|
+| JMeter Master Resources | 依 chart 預設或專案覆蓋 | requests: 1000m/2048Mi, limits: 2000m/4096Mi |
+| JMeter Slave Resources | 依 chart 預設或專案覆蓋 | requests: 1000m/1024Mi, limits: 2000m/2048Mi |
+| JVM Heap（Master） | `config/jmeter.lab.env` | `config/jmeter.dr-prod.env` |
+| JVM Heap（Slave） | `config/jmeter.lab.env` | `config/jmeter.dr-prod.env` |
+
+對應檔案：
+- Helm resources：`k8s/helm/environments/values/lab.yaml`、`k8s/helm/environments/values/dr-prod.yaml`
+- JVM heap：`config/jmeter.lab.env`、`config/jmeter.dr-prod.env`
+
+可另外用 `scenario/<project>/deploy.values.yaml` 定義專案級部署參數，達成「環境（lab/dr-prod） + 專案 + 本次測試」三層覆蓋。
+
+### 8) K8S架構 & Helm管理與部署
+
+本專案設計特性如下：
+
+#### JMeter、Webapp、Report-Server 共用 PVC
+
+- JMeter（動態執行）、Webapp（管理介面）、Report-Server（報表瀏覽）三者共用同一個 PVC（jmeter-data-dir-pvc），以便測試報告能即時產生與瀏覽。
+- JMeter 測試資源（master/slave/job）是動態建立、動態清除（由 cleanup job 自動移除），而 Webapp 與 Report-Server 則為長駐服務。
+- 因此，**PVC 的建立必須交由 Helm umbrella chart（perf-stack release）統一管理**，避免多個 Helm release 在同一 PVC 上產生 ownership 衝突。
+
+##### 正確操作方式
+
+- **安裝整體環境（perf-stack）時**，必須在 `k8s/helm/environments/values/lab.yaml` 設定：
+
+  ```yaml
+  global:
+    mastere:
+      enabled: false
+    slave:
+      enabled: false
+    pvc:
+      enabled: true
+  ```
+  這樣 umbrella chart 只會建立 PVC，不會建立 JMeter workload。
+  mastere.enabled、slave.enabled需要放在global底下是為了helm install不論是對整個k8s/helm還是只安裝k8s/helm/charts/jmeter都能通用所必需的。
+
+- **啟動測試（start_test.sh）時**，必須帶入 `--pvc-enabled false`，即 `global.pvc.enabled=false`，讓 runtime release 不會再建立 PVC，只動態建立/清除 JMeter master/slave/job 等資源，同時start_test.sh在啟動時會透過--set global.master.enabled=true與--set global.slave.enabled=true強制啟動jmeter。
+
+##### 為什麼要這樣設計？
+
+- 若多個 Helm release（如 perf-stack、jmeter-runtime）同時管理同一 PVC，會造成 Helm ownership annotation 衝突，導致安裝/升級/移除時出現錯誤。
+- 這種設計可確保 PVC 生命週期由 umbrella chart 統一管理，JMeter 測試可安全動態執行與清除。
+
+> **重點：**
+> - perf-stack 安裝時：global.pvc.enabled=true
+> - start_test.sh 執行時：--pvc-enabled false
+
+#### Telegraf 子 chart（Cluster RBAC）單例策略
+
+為避免在多 namespace 安裝 `perf-stack` 時，重複建立 cluster-scoped RBAC（`ClusterRole` / `ClusterRoleBinding`）造成 ownership 衝突，telegraf 子 chart 已新增以下參數：
+
+```yaml
+telegraf:
+  rbac:
+    createClusterScopedResources: true
+    clusterRoleName: metrics-reader
+    clusterRoleBindingName: telegraf-metrics-reader
 ```
 
-#### DR-Prod 環境
+- 第一個（主）namespace：`createClusterScopedResources=true`（建立 cluster RBAC）
+- 第二個（次）namespace：`createClusterScopedResources=false`（重用既有 cluster RBAC，不再重建）
+
+範例：
 
 ```bash
-kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
+# primary namespace（建立 cluster-scoped RBAC）
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/values/dr-prod.yaml \
+  --set telegraf.rbac.createClusterScopedResources=true
+
+# secondary namespace（不要重建 cluster-scoped RBAC）
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test2 --create-namespace \
+  -f k8s/helm/environments/values/dr-prod.yaml \
+  --set telegraf.rbac.createClusterScopedResources=false
 ```
 
-同理，若是第二個 namespace，直接改成：
+#### 多 namespace Ingress Host 自動化（免手改 YAML）
+
+為避免 `report host`、`grafana host`、`webapp host` 在多 namespace 互撞，建議使用根目錄腳本：
+
+`./deploy_perf_stack.sh`
+
+另外，`k8s/helm/environments/resources/*/*.yaml` 內的 `Secret` / `ConfigMap` 已移除硬編碼 namespace。
+同一份 YAML 可以重複套用到不同 namespace，不需要另外維護 `performance-test2` 專用副本；改用 `kubectl -n <namespace> apply -f ...` 指定目標 namespace 即可。
+
+此腳本會以 Helm `--set-string` 自動覆寫以下值，不需手動修改任何 `k8s/helm/environments/values/*.yaml`：
+
+- `report-server.ingress.host`
+- `grafana.ingress.host`
+- `webapp.ingress.host`
+- `report-server.ingress.tls.*`
+- `grafana.ingress.tls.*`
+- `webapp.ingress.tls.*`
+- `ingress-class-name`（可選）
+- `global.master.nodeSelector.*`（可選）
+- `global.slave.nodeSelector.*`（可選）
+
+另外，`deploy_perf_stack.sh` 也會依 `--helm-env` 自動帶入共用 wildcard TLS secret 預設值：
+
+- `lab`：`wildcard-example-com-tls`
+- `dr-prod`：`wildcard-mgnt-mvdis-gov-tw-tls`
+
+若你要覆蓋預設 secret，可改傳：
+
+- `--tls-secret-name <name>`：三個 ingress 共用同一個 secret
+- `--report-tls-secret-name <name>`
+- `--grafana-tls-secret-name <name>`
+- `--webapp-tls-secret-name <name>`
+
+另外，腳本在 Helm 部署完成後，會自動檢查並補齊 `ClusterRoleBinding`（預設：`telegraf-metrics-reader`）內的 subject，確保包含當前 namespace 的 `telegraf` ServiceAccount（`<namespace>/telegraf`）。
+這可避免多 namespace 擴充時，Grafana dashboard 因 telegraf 權限缺漏而看不到 namespace 指標。
+若你的環境由平台/GitOps 統一管理 cluster RBAC，可加上 `--skip-telegraf-rbac-subject-sync` 跳過這個自動補齊步驟。
+
+另外，若你希望部署時就固定 jmeter master/slave 的節點池，可加上：
+
+- `--master-node-label <key=value>`（可重複）
+- `--slave-node-label <key=value>`（可重複）
+
+注意：
+
+- 參數格式必須是 `key=value`。
+- 沒有填時為預設行為：不限制 nodeSelector（可排程到所有可用 workload node）。
+- 腳本會同步產生 `k8s/helm/environments/runtime-overrides/<helm-env>.<namespace>.yaml`（供本地參考備查）。
+- 腳本會同步寫入 namespace 內的 ConfigMap：`jmeter-runtime-node-selector-override`（key: `override.yaml`），作為 `start_test.sh` 的唯一真實來源（Single Source of Truth）。
+
+也就是說，當你先用 `deploy_perf_stack.sh` 設定了 master/slave label 後，後續同 namespace 的 `start_test.sh` 會自動從 ConfigMap 讀取並套用相同 nodeSelector 行為，不需要再手動 `--set`。
+
+> **設計說明：** 由於 `start_test.sh` 可能在 webapp 容器內執行，無法直接讀取 host 上的本地檔案，因此 ConfigMap 是跨 Pod/Container 傳遞部署參數的唯一可靠機制。`deploy_perf_stack.sh` 產生的本地 `runtime-overrides` 檔案僅供參考備查，不影響實際部署行為。
+
+預設命名規則：
+
+- `jmeter-report-<namespace>.<base-domain>`
+- `jmeter-grafana-<namespace>.<base-domain>`
+- `jmeter-web-<namespace>.<base-domain>`
+
+範例：
 
 ```bash
+# primary namespace（建立 telegraf cluster RBAC）
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --telegraf-cluster-rbac true
+
+# secondary namespace（不重建 telegraf cluster RBAC）
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --telegraf-cluster-rbac false
+
+# lab 環境：自動套用 wildcard-example-com-tls
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env lab \
+  --base-domain example.com \
+  --telegraf-cluster-rbac true
+
+# 指定三個 ingress 共用同一張 wildcard 憑證 secret
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --tls-secret-name wildcard-mgnt-mvdis-gov-tw-tls \
+  --telegraf-cluster-rbac true
+
+# 需要時也可分別指定不同 ingress secret
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --report-tls-secret-name report-wildcard-tls \
+  --grafana-tls-secret-name grafana-wildcard-tls \
+  --webapp-tls-secret-name webapp-wildcard-tls \
+  --telegraf-cluster-rbac true
+
+# 指定 master/slave 分別部署到不同 label 節點
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --master-node-label pt-group=group-1-m \
+  --slave-node-label pt-group=group-1
+
+# 可重複傳入多組 label（同一個 nodeSelector map）
+./deploy_perf_stack.sh \
+  -n performance-test \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --master-node-label role=jmeter \
+  --master-node-label tier=perf \
+  --slave-node-label role=jmeter \
+  --slave-node-label tier=perf
+```
+
+若你要指定既有網域命名，也可直接傳入明確 host：
+
+```bash
+# lab環境完整範例(視情況決定telegraf-cluster-rbac)
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env lab \
+  --report-host report1-dr.mgnt.mvdis.gov.tw \
+  --grafana-host grafana2-dr.mgnt.mvdis.gov.tw \
+  --webapp-host jmeter-web2-dr.mgnt.mvdis.gov.tw \
+  --master-node-label pt-group=group-1-m \
+  --slave-node-label pt-group=group-1 \
+  --telegraf-cluster-rbac false
+
+#dr環境完整範例(視情況決定telegraf-cluster-rbac)
+./deploy_perf_stack.sh \
+  -n performance-test1 \
+  --helm-env dr-prod \
+  --apply-env-resources \
+  --ingress-class-name kommander-traefik \
+  --report-host jmeter-report1-dr.mgnt.mvdis.gov.tw \
+  --grafana-host jmeter-grafana1-dr.mgnt.mvdis.gov.tw \
+  --webapp-host jmeter-web1-dr.mgnt.mvdis.gov.tw \
+  --master-node-label pt-group=group-1-m \
+  --slave-node-label pt-group=group-1 \
+  --telegraf-cluster-rbac false
+```
+
+### 9) 三層覆蓋優先序（環境值檔 / 專案覆寫值 / 本次執行值）
+
+延伸閱讀：[webapp/README.md 的同名章節](webapp/README.md#8-三層覆蓋優先序環境值檔--專案覆寫值--本次執行值)
+
+三層覆蓋優先序（由低到高）如下：
+
+| 層級 | 來源 | 作用 | 優先序 |
+|---|---|---|---|
+| 1 | `k8s/helm/environments/values/<env>.yaml` | 環境共用基線（lab/dr-prod） | 低 |
+| 2 | `scenario/<project>/deploy.values.yaml` | 專案固定需求（例如 demoweb） | 中 |
+| 3 | `start_test.sh` 本次執行產生的 run values | 本次測試動態參數（例如 `-i`） | 高 |
+
+範例（同一個 key 衝突時誰生效）：
+- `lab.yaml` 設 `slaves.parallelism: 1`
+- `scenario/demoweb/deploy.values.yaml` 設 `slaves.parallelism: 4`
+- 命令列帶 `-i 2`
+
+最終會使用 `2`（因為本次執行層優先序最高）。
+
+已提供範本：`scenario/_template/deploy.values.yaml`
+
+```bash
+# 以 demoweb 專案為例
+cp scenario/_template/deploy.values.yaml scenario/demoweb/deploy.values.yaml
+```
+
+---
+
+### 10) Webapp 管理後臺（FastAPI）
+
+![Webapp 管理介面畫面](docs/images/webapp-tests.png)
+
+> ※ Webapp 管理後臺詳細說明文檔請參考 [webapp/README.md](webapp/README.md)
+
+本專案包含一個 `webapp` 子系統（`webapp/`），提供網頁化操作能力，與本 starterkit 的關係如下：
+
+  - `start_test.sh` / `stop_test.sh` 仍是核心執行腳本；webapp 是其 UI 管理入口
+  - webapp 透過 Helm / kubectl 操作同一套 k8s 資源（同 namespace）
+  - webapp 的報表與 master 共用 PVC，才能即時瀏覽測試報告
+  - 參數治理採三層覆蓋用詞：環境值檔（`k8s/helm/environments/values/*.yaml`）→ 專案覆寫值（`scenario/<project>/deploy.values.yaml`）→ 本次執行值（`start_test.sh`）
+  - 提供Jmeter Logs 頁面用以檢視發動測試後相關Log， 並具JMeter `WARN / INFO / ERROR` Log忽略規則清單，使用 `ConfigMap` 注入，預設檔位於 `k8s/helm/environments/resources/*/webapp-log-filter-configmap.yaml`
+
+#### Webapp 持久化補充（Scenario / Data）
+
+Webapp 目前使用三個 PVC，分別保存測試報告、JMeter scenario 資源，以及 Webapp 的帳號與操作資料。這些資料不會因 Webapp image 重新建置或 Pod 重建而遺失；但若刪除 PVC，仍可能造成資料遺失，請依需求先行備份。
+
+##### 1. 報告 PVC：`jmeter-data-dir-pvc`
+
+- 掛載路徑：`/workspace/report`
+- 與 JMeter master、Report-Server 共用
+- 保存 JMeter 測試產出的 HTML 報告、`statistics.json`、JTL 與其他報告資源
+- Webapp 的報告頁面會從此路徑列舉、瀏覽及下載報告
+
+##### 2. Scenario PVC：`jmeter-webapp-scenario-pvc`
+
+- 掛載路徑：`/workspace/scenario`
+- 保存 JMeter 專案目錄與測試輸入檔案，包括：
+  - 專案內的 JMX、`.env`、`jmeter-system.properties`、`report-meta.env`
+  - 共用的 `scenario/dataset` CSV 資料集
+  - 共用的 `scenario/module` JMeter module / test fragment
+  - `scenario/_template` 專案建立時使用的模板檔案
+- Webapp 的專案管理、JMX 上傳、Dataset 管理，以及 `start_test.sh` 都會使用此路徑
+
+##### 3. Webapp Data PVC：`jmeter-webapp-data-pvc`
+
+- 掛載路徑：`/workspace/webapp/data`
+- 保存 Webapp 執行期間產生的管理資料，包括：
+  - `users.json`：使用者帳號、群組與密碼雜湊
+  - `upload_owners.json`：JMX / Dataset 上傳者與最後編輯者資訊
+  - `report_meta.json`：報告重要標記與備註等 metadata
+  - `secrets/`：資料庫還原等功能使用的 token 檔案（請勿提交真實機密）
+
+##### 4. 不在 PVC 中的項目
+
+- Webapp image 內建的程式碼、HTML template、static 資源與模板 fallback 不屬於 PVC
+- `config/*`、Helm values 與 Kubernetes `ConfigMap` / `Secret` 由部署資源或 image 提供，不會自動寫入上述 PVC
+- Webapp container 的標準輸出與暫存檔不會因為上述 PVC 掛載而自動保存
+
+若要重建或刪除 PVC，建議先備份 `/workspace/report`、`/workspace/scenario` 與 `/workspace/webapp/data`；尤其是 `users.json`、`upload_owners.json` 及報告資料。
+
+### 11) Ingress Wildcard TLS 憑證建立
+
+若你希望 lab 與 dr-prod 內多個站台共用同一張自簽 wildcard 憑證，可先在本機用 OpenSSL 產生對應憑證與私鑰，再建立成 Kubernetes TLS secret。
+
+#### Lab：`*.example.com`
+
+```bash
+mkdir -p tmp/tls/lab
+
+openssl req -x509 -nodes -newkey rsa:4096 -sha256 -days 825 \
+  -keyout tmp/tls/lab/wildcard-example.com.key \
+  -out tmp/tls/lab/wildcard-example.com.crt \
+  -subj "/CN=*.example.com" \
+  -addext "subjectAltName=DNS:*.example.com,DNS:example.com"
+
+kubectl -n performance-test create secret tls wildcard-example-com-tls \
+  --cert=tmp/tls/lab/wildcard-example.com.crt \
+  --key=tmp/tls/lab/wildcard-example.com.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+若要套用到第二個 namespace，只要改 namespace 重跑最後一段：
+
+```bash
+kubectl -n performance-test2 create secret tls wildcard-example-com-tls \
+  --cert=tmp/tls/lab/wildcard-example.com.crt \
+  --key=tmp/tls/lab/wildcard-example.com.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+#### DR-Prod：`*.mgnt.mvdis.gov.tw`
+
+```bash
+mkdir -p tmp/tls/dr-prod
+
+openssl req -x509 -nodes -newkey rsa:4096 -sha256 -days 825 \
+  -keyout tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
+  -out tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
+  -subj "/CN=*.mgnt.mvdis.gov.tw" \
+  -addext "subjectAltName=DNS:*.mgnt.mvdis.gov.tw,DNS:mgnt.mvdis.gov.tw"
+
+kubectl -n performance-test create secret tls wildcard-mgnt-mvdis-gov-tw-tls \
+  --cert=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
+  --key=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+第二個 namespace 範例：
+
+```bash
+kubectl -n performance-test2 create secret tls wildcard-mgnt-mvdis-gov-tw-tls \
+  --cert=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.crt \
+  --key=tmp/tls/dr-prod/wildcard-mgnt.mvdis.gov.tw.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+#### 驗證 secret 與 Ingress TLS 設定
+
+```bash
+kubectl -n performance-test get secret wildcard-example-com-tls
+kubectl -n performance-test get ingress report-server grafana-ingress jmeter-webapp -o yaml | grep -E 'host:|secretName:'
+```
+
+注意事項：
+
+- 自簽憑證只適合內部測試或受控 lab/dr 環境；瀏覽器與用戶端需自行信任該 CA/憑證。
+- 同一張 wildcard 憑證可覆蓋 `jmeter-report-<namespace>.<base-domain>`、`jmeter-grafana-<namespace>.<base-domain>`、`jmeter-web-<namespace>.<base-domain>`。
+- `deploy_perf_stack.sh` 只會把 Ingress 指到指定 `secretName`，不會自動建立 TLS secret；請先建立 secret 再部署。
+
+為避免重建 image 或重新部署時覆蓋環境資料，webapp 另有兩個專用 PVC 掛載：
+
+- `/workspace/scenario`：保存專案 JMX、`.env`、`report-meta.env` 與 `scenario/dataset`
+- `/workspace/webapp/data`：保存 `users.json`、`upload_owners.json`、`webapp/data/secrets/*`
+
+#### 設定管理頁面生效與重啟行為（重要）
+
+請特別注意：webapp container 內的 `/workspace` 內容主要來自 **webapp image build 當下**打包進去的檔案；目前持久化掛載只涵蓋上面兩個目錄（`/workspace/scenario`、`/workspace/webapp/data`）。
+
+這代表：
+
+- 你在本地 workspace 修改 `config/*`、`k8s/helm/environments/values/*` 等檔案，不會自動改變「已在 cluster 執行中」的 webapp 行為。
+- 你在 webapp「設定管理」頁面修改到非持久化路徑的檔案時，變更可能只存在於當前 Pod/container。
+- 一旦 webapp Pod 重建/重啟（例如 rollout restart、節點漂移、升版），這類變更可能會回到 image 內原始內容（看起來像被 reset）。
+
+若要讓這類設定真正穩定生效，建議流程：
+
+1. 在 repo 內更新目標設定檔。
+2. 重 build 並推送新的 webapp image。
+3. `helm upgrade` 指向新 image tag（或 digest），再 rollout。
+
+若希望「設定管理」頁面的特定設定可跨重啟保留，需另外把對應路徑改為 PVC/ConfigMap/Secret 掛載，不建議只依賴 container 可寫層。
+
+首次部署且 `webapp/data` PVC 為空時，webapp 需要 bootstrap admin（由 Secret 注入）：
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-bootstrap-admin-secret.yaml
+```
+
+dr-prod 可用：
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/webapp-bootstrap-admin-secret.yaml
+```
+
+> **注意**：Secret 與 ConfigMap 的內容皆以環境變數注入容器，容器啟動後不會自動熱更新。
+> 每次 `apply` 修改後，必須重啟 webapp 才能讓新值生效：
+> ```bash
+> kubectl -n <namespace> rollout restart deploy/jmeter-webapp
+> kubectl -n <namespace> rollout status deploy/jmeter-webapp --timeout=240s
+> ```
+
+另外，webapp 的 Logs 頁面目前也支援透過 `ConfigMap` 注入 JMeter log 忽略規則，避免只為了調整過濾條件而重打 image。
+
+- lab：`k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml`
+- dr-prod：`k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml`
+
+目前支援以下三組設定（皆為「每行一條 pattern」）：
+
+- `WEBAPP_IGNORED_JMETER_WARN_PATTERNS`
+- `WEBAPP_IGNORED_JMETER_INFO_PATTERNS`
+- `WEBAPP_IGNORED_JMETER_ERROR_PATTERNS`
+
+首次部署或首次啟用這套機制時，建議順序如下：
+
+```bash
+# 1) 先建立 bootstrap admin secret
+kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-bootstrap-admin-secret.yaml
+
+# 2) 再建立 log filter configmap
+kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml
+
+# 3) 最後做 Helm upgrade/install
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/values/lab.yaml
+```
+
+> 原因：webapp deployment 會透過 `envFrom.configMapRef` 讀取 `jmeter-webapp-log-filter`。若先升版、`ConfigMap` 尚未存在，Pod 建立時可能因缺少參照來源而失敗。
+
+若之後只是調整忽略規則內容，而沒有修改 Helm chart/template，通常不需要再做 `helm upgrade`；只要重新套用 `ConfigMap` 並重啟 webapp 即可（ConfigMap 以 `envFrom` 注入，Pod 不重啟不會讀到新值）：
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml
+kubectl -n performance-test rollout restart deploy/jmeter-webapp
+kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
+```
+
+若要部署到第二個 namespace，例如 `performance-test2`，直接改 namespace 參數即可：
+
+```bash
+kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/webapp-bootstrap-admin-secret.yaml
+kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml
 kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
 ```
 
-### 前置要求
+#### Image Pull Secret（bmcharbor-auth）
 
-1. **遠端服務器**：需要在 `10.1.36.31` 上的 `/home/oracle/scripts` 目錄中存放以下 shell scripts：
-   - `create_rp.sh`
-   - `current_rp.sh`
-   - `delete_rp.sh`
-   - `fb_process.sh`
-   - `restore_rp.sh`
+`dr-prod` values 會使用：
 
-2. **Python 依賴**：Webapp 需要 `paramiko` 庫來實現 SSH 連接：
-   ```bash
-   pip install paramiko
-   ```
+- `global.imagePullSecrets: [bmcharbor-auth]`
 
-3. **SSH 認證**：需要有效的 Oracle 用戶帳號和密碼（或可配置密鑰認證）
+若 namespace 尚未建立此 secret，`jmeter-master`/`jmeter-slave` 會出現 `FailedToRetrieveImagePullSecret` 或 `ImagePullBackOff`。
 
-### 使用方式
+專案已提供範本（不含真實憑證）：
 
-1. 登入 Webapp 管理平台（`http://<webapp-host>/`)
-2. 點擊導航菜單中的「資料庫還原」
-3. 選擇環境（LAB 或 DR-Prod）
-4. 輸入 PDB 名稱（例：CDBC1）
-5. 根據需要執行相應的操作：
-   - **建立還原點**：輸入還原點名稱，點擊「建立還原點」按鈕
-   - **查詢還原點**：點擊「查詢還原點」按鈕查看可用的還原點列表
-   - **刪除還原點**：輸入要刪除的還原點名稱，點擊「刪除還原點」按鈕
-   - **查詢還原進度**：點擊「查詢還原進度」按鈕查看當前是否有還原操作進行中
-   - **執行還原**：輸入目標還原點名稱，點擊「執行還原」按鈕（此操作會關閉 PDB 並執行還原，需要確認）
+- `k8s/helm/environments/resources/dr-prod/image-pull-secret.yaml`
+- `k8s/helm/environments/resources/lab/image-pull-secret.yaml`
 
-### API 端點
+建議做法：
 
-| 操作 | 方法 | 端點 | 說明 |
-|------|------|------|------|
-| 建立還原點 | POST | `/api/oracle-flashback/create-rp` | 建立新的還原點 |
-| 查詢還原點 | POST | `/api/oracle-flashback/list-rp` | 列出可用的還原點 |
-| 刪除還原點 | POST | `/api/oracle-flashback/delete-rp` | 刪除指定還原點 |
-| 查詢進度 | POST | `/api/oracle-flashback/check-process` | 檢查還原進程狀態 |
-| 執行還原 | POST | `/api/oracle-flashback/restore-rp` | 執行 Flashback Restore |
+1. 直接編輯 `.dockerconfigjson` 內的 `username` / `password` / `auth`
+2. `auth` 請填 `echo -n 'username:password' | base64 -w0` 的結果
+3. 套用到目標 namespace（dr-prod 建議不要提交真實憑證）
 
-### 請求參數
-
-所有 API 端點都支持以下參數（使用 `application/x-www-form-urlencoded` 格式）：
-
-| 參數 | 必需 | 說明 |
-|------|------|------|
-| `env` | 是 | 環境名稱（lab 或 dr-prod） |
-| `pdb_name` | 是 | PDB 名稱 |
-| `restore_point` | 部分 | 還原點名稱（建立、刪除、執行還原時必需） |
-
-### 響應格式
-
-所有 API 響應均返回 JSON 格式：
-
-```json
-{
-  "ok": true,
-  "env": "lab",
-  "pdb": "CDBC1",
-  "restore_point": "RP_20260327_153000",
-  "output": "...",
-  "error": "",
-  "exit_code": 0
-}
+```bash
+kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/image-pull-secret.yaml
 ```
 
-| 欄位 | 說明 |
-|------|------|
-| `ok` | 操作是否成功 |
-| `env` | 使用的環境 |
-| `pdb` | PDB 名稱 |
-| `restore_point` | 還原點名稱（如果適用） |
-| `output` | 命令執行的標準輸出 |
-| `error` | 命令執行的錯誤輸出 |
-| `exit_code` | Shell 命令的終止碼 |
+若你希望部署時順便自動套用該環境 `resources` 目錄，可使用：
 
-### 故障排查
+```bash
+./deploy_perf_stack.sh \
+  -n performance-test2 \
+  --helm-env dr-prod \
+  --base-domain mgnt.mvdis.gov.tw \
+  --apply-env-resources
+```
 
-#### 連接失敗
-- 檢查 K8s Secret 中的 SSH 認證信息是否正確
-- 確認遠端服務器是否可達（檢查網路連線和防火牆規則）
-- 驗證 SSH 帳號和密碼是否有效
+`--apply-env-resources` 會在 Helm 前自動套用 `k8s/helm/environments/resources/<helm-env>/*.yaml`。
 
-#### 腳本執行失敗
-- 檢查遠端服務器上的 scripts 文件是否存在且有執行權限
-- 查看 API 響應中的 `error` 和 `output` 欄位以了解具體的錯誤信息
-- 確認 Oracle 環境變量設置是否正確（ORACLE_HOME、ORACLE_SID 等）
+再執行 Helm：
 
-#### 權限問題
-- 確保 Oracle 用戶有權執行 SQL Plus 命令並管理 restore points
-- 確認 Oracle 用戶能夠讀取和執行 `/home/oracle/scripts` 目錄中的腳本
+```bash
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/values/lab.yaml
+```
 
-### 相關文件
+> 每次你有修改 `k8s/helm/charts/*` 子 chart（例如 webapp template / values）後，請先執行 `helm dependency build k8s/helm` 再 `helm upgrade`，避免實際部署仍套用舊版子 chart 內容。
 
-- K8s Secret 配置：
-  - [lab.oracle-flashback-secret.yaml](k8s/helm/environments/resources/lab/oracle-flashback-secret.yaml)
-  - [dr-prod.oracle-flashback-secret.yaml](k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml)
-- Webapp 服務模塊：[oracle_flashback_service.py](webapp/app/services/oracle_flashback_service.py)
-- API 路由：[routers/api.py](webapp/app/routers/api.py)
-- Web UI 模板：[templates/oracle_flashback.html](webapp/app/templates/oracle_flashback.html)
+若首次部署後 `scenario` PVC 為空，可把 repo 內既有資料拷貝到 webapp 掛載路徑：
+
+```bash
+# 1) 取得 webapp pod
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+
+# 2) 建立目錄（若已存在可忽略）
+kubectl -n performance-test exec "$WEBAPP_POD" -- mkdir -p /workspace/scenario/dataset
+
+# 3) 拷貝單一 JMeter 專案目錄（例：demoweb）
+kubectl -n performance-test cp scenario/demoweb "$WEBAPP_POD":/workspace/scenario/demoweb
+
+# 4) 拷貝單一 dataset 檔案（例：test-dataset.csv）
+kubectl -n performance-test cp scenario/dataset/test-dataset.csv "$WEBAPP_POD":/workspace/scenario/dataset/test-dataset.csv
+
+# 5) 驗證檔案已存在
+kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario
+kubectl -n performance-test exec "$WEBAPP_POD" -- ls -lah /workspace/scenario/dataset
+```
+
+若你要一次同步整個 `scenario` 目錄（包含多個專案與 dataset），可改用：
+
+```bash
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+kubectl -n performance-test cp scenario/. "$WEBAPP_POD":/workspace/scenario/
+```
+
+若你有在環境內新增帳號（例如 `test1`），建議在升版前先備份 `users.json`：
+
+```bash
+# 備份 users.json 到本機
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+kubectl -n performance-test cp "$WEBAPP_POD":/workspace/webapp/data/users.json ./users.backup.json
+```
+
+若因 PVC 重建或設定異動導致帳號遺失，可回寫：
+
+```bash
+WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
+kubectl -n performance-test cp ./users.backup.json "$WEBAPP_POD":/workspace/webapp/data/users.json
+kubectl -n performance-test rollout restart deploy/jmeter-webapp
+kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
+```
+
+> 若 `webapp/data` PVC 被刪除重建，舊 `users.json` 不會保留；此時沒有備份就只能用 bootstrap admin 重新建立帳號。
+
+`start_test.sh` 仍可維持現有 `scenario/...` 相對路徑，不需調整，只要掛載點保持 `/workspace/scenario`。
+
+#### 專案管理頁：建立新專案（含模板自動帶入）
+
+在 webapp 的「專案管理」頁面可直接輸入新專案名稱並建立。
+
+建立成功時會自動建立 `scenario/<project>/`，並複製以下三個檔案：
+
+- `.env`
+- `jmeter-system.properties`
+- `report-meta.env`
+
+模板來源優先序：
+
+1. `/workspace/scenario/_template`（PVC 內模板）
+2. `webapp/app/project_template_defaults`（webapp 內建 fallback）
+
+建立完成後，頁面會立即切換到新專案並自動讀取上述檔案內容。
+
+> 若你在 PVC 內沒有 `_template`，功能仍可透過 webapp 內建 fallback 模板正常建立。
+
+請務必遵循此原則，才能避免 PVC 衝突與測試異常。
+
+### 12) 支援 JMeter Concurrency Thread Group Plugin（CTG）
+
+若要穩定使用 Concurrency Thread Group，建議改為「自製 JMeter image 並於 build 時安裝 plugin」，避免每次測試啟動時才連外下載 plugin（容易受 DNS/網路限制影響）。
+
+本專案已提供：
+
+- Dockerfile：`docker/jmeter-ctg/Dockerfile`
+- build/push 腳本：`docker/jmeter-ctg/build_and_push.sh`
+
+#### 1. 建置與推送 image
+
+範例（請改成你自己的 registry/repo）：
+
+```bash
+chmod +x docker/jmeter-ctg/build_and_push.sh
+./docker/jmeter-ctg/build_and_push.sh docker.io/isaac0815/jmeter-k8s-base 5.6.3-ctg-1
+```
+
+若尚未登入 Docker Hub，先執行：`podman login docker.io`
+
+#### 2. 更新 Helm values（master/slave 要一致）
+
+目前已在以下檔案預設為 CTG image：
+
+- `k8s/helm/charts/jmeter/values.yaml`
+
+若你的環境 values 設定了 `global.imageRegistry`（例如內網 Harbor），請留意：
+
+- 要直接拉 Docker Hub image（`docker.io/isaac0815/...`）時，`global.imageRegistry` 需為空字串。
+- 或者改成先把 image 同步到你的私有 registry，再填私有 repo 路徑。
+
+若你使用其他環境 values（例如 lab），也請同步覆蓋：
+
+```yaml
+global:
+  master:
+    image:
+      repository: <your-jmeter-image-repo>
+      tag: "5.6.3-ctg-1"
+  slave:
+    image:
+      repository: <your-jmeter-image-repo>
+      tag: "5.6.3-ctg-1"
+```
+
+#### 3. 重新部署
+
+```bash
+helm dependency build k8s/helm
+helm upgrade --install perf-stack k8s/helm \
+  -n performance-test --create-namespace \
+  -f k8s/helm/environments/values/dr-prod.yaml
+```
+
+如果是啟動測試 runtime（`start_test.sh`），請確保其使用的 `--helm-env` 對應 values 也已改成你的 CTG image。
+
+#### 4. 驗證 plugin 是否可用
+
+可在 master pod 檢查 plugin jar：
+
+```bash
+kubectl -n performance-test exec -it <jmeter-master-pod> -- \
+  ls -1 /opt/jmeter/apache-jmeter/lib/ext | grep -E 'casutg|cmn-jmeter|plugins-manager'
+```
+
+若有看到 `jmeter-plugins-casutg-*.jar`，代表 Concurrency Thread Group plugin 已在 image 中。
+
+

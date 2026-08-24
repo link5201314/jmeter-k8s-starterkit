@@ -1,57 +1,16 @@
-# JMeter Web Console (Prototype)
+# JMeter Web Console
 
-這是 FastAPI + Jinja2 的雛型管理平台，提供：
+這是 FastAPI + Jinja2 的Jmeter in K8S分佈式壓測管理平台，提供：
 
-- 透過網頁啟停 JMeter 分佈式測試
-- 管理 Helm 環境 values 與專案 jmeter-system.properties
-- 管理專案 `.env` / `report-meta.env` 與上傳 JMX
-- 上傳 dataset CSV
-- 瀏覽並下載報告（單份 ZIP 或依篩選條件整批 ZIP）
-- 資料庫還原工作（模擬送出 API 預覽）
-- 網站登入與使用者/群組管理
-
-## 報告批次下載
-
-- 報告頁（`/reports`）提供「下載篩選結果 ZIP」按鈕
-- 下載內容會依目前篩選條件（專案、開始日期、結束日期）決定
-- 單次最多下載 `100` 個報告；若超過會提示：`最大單次下載100個報告，請調整篩選範圍`
-
-## 檔案覆蓋權限（JMX / Dataset）
-
-- 上傳者資訊記錄於 `webapp/data/upload_owners.json`
-- 每筆紀錄保留 `original_owner` 與 `last_editor`
-- `Admin` 可覆蓋任意既有 JMX / Dataset
-- 非 `Admin` 只能覆蓋 `original_owner` 是自己的 JMX / Dataset
-- 非 `Admin` 嘗試覆蓋他人檔案時，API 會回 `403`
-
-## Logs 頁面（JMeter Pod Logs）UX 優化
-
-- JMeter Master/Slave Pod Logs 改為「左側 Pod 清單 + 右側單一 Pod 詳細 log」
-- 支援 Pod 關鍵字搜尋，快速定位特定 slave pod
-- 支援「只看異常 Pod（ERROR/WARN）」切換，排障時可先聚焦異常節點
-- Pod 清單提供異常摘要（E/W 計數）與狀態標記（正常/異常）
-- `WARN / INFO / ERROR` 三組忽略規則已改由 Kubernetes `ConfigMap` 注入，不再寫死在前端模板內
-- 對應設定檔：`k8s/helm/environments/resources/lab/webapp-log-filter-configmap.yaml`、`k8s/helm/environments/resources/dr-prod/webapp-log-filter-configmap.yaml`
-- 可設定的 key：`WEBAPP_IGNORED_JMETER_WARN_PATTERNS`、`WEBAPP_IGNORED_JMETER_INFO_PATTERNS`、`WEBAPP_IGNORED_JMETER_ERROR_PATTERNS`
-- 格式為「每行一條 pattern」；更新後需重新啟動 `jmeter-webapp` Pod 才會讀到新 env
-
-## 帳號與權限
-
-- 帳號資料儲存在 `webapp/data/users.json`
-- 密碼欄位使用 PBKDF2-SHA256 加鹽雜湊儲存（不存明碼）
-- 首次部署（`users.json` 不存在或為空）需提供 bootstrap admin：
-    - `WEBAPP_BOOTSTRAP_ADMIN_USERNAME`
-    - `WEBAPP_BOOTSTRAP_ADMIN_PASSWORD`
-    - `WEBAPP_BOOTSTRAP_ADMIN_GROUP`（可省略，預設 `Admin`）
-
-> 建議在 Kubernetes 使用 Secret 注入環境變數，不要把帳密寫在 image 或原始碼裡。
-
-群組權限：
-
-- `Admin`：可使用全部功能（含使用者管理）
-- `Executor`：除使用者管理外，其餘功能可用
-- `Tester`：不可使用使用者管理，且不可使用測試驅動
-- `Viewer`：僅可使用 **報告（/reports）** 與 **Logs（/logs）**；不可使用測試驅動、資料庫還原、設定管理、專案管理、Dataset、使用者管理
+- [1) 透過網頁啟停 JMeter 分佈式測試](#1-測試驅動)
+- [2) 資料庫還原（API 預覽與 Oracle Flashback）](#2-資料庫還原)
+- [3) 管理 Helm 環境 values 與 jmeter config](#3-設定管理)
+- [4) 管理專案 `.env` / `report-meta.env` / `jmeter-system.properties` 與上傳 JMX](#4-專案管理)
+- [5) 上傳 dataset CSV](#5-dataset)
+- [6) 管理 JMeter Fragment 模組](#6-管理模組)
+- [7) 瀏覽並下載報告（單份 ZIP 或依篩選條件整批 ZIP）](#7-報告)
+- [8) 檢視測試執行與 JMeter Master/Slave Pod Log](#8-logs)
+- [9) 網站登入與使用者/群組管理](#9-使用者管理)
 
 ## 技術選型
 
@@ -107,36 +66,6 @@ webapp/
 - `app/static/app.css`: 基本樣式
 - `Dockerfile`: 容器化（內建 kubectl/helm）
 - `requirements.txt`: Python 套件
-
-## 資料庫還原頁面（模擬送出）
-
-- 頁面路徑：`/db-restore`
-- 依 `config/jmeter.<env>.env` 自動列出可選環境
-- 每個按鈕都只顯示「將發送的 API 內容」，不會真的呼叫對接服務
-
-按鈕功能：
-
-1. 建立 Flashback 任務
-2. 查詢任務狀態
-3. 查詢所有任務
-4. 取消任務
-
-環境檔需設定：
-
-- `JMETER_FLASHBACK_DB_API=<endpoint-url>`
-
-API Key / Token 存放位置（已加到 `.gitignore`）：
-
-- `webapp/data/secrets/db_restore_tokens.json`
-
-範例：
-
-```json
-{
-    "lab": "your-lab-token",
-    "dr-prod": "your-dr-prod-token"
-}
-```
 
 ## 本機啟動
 
@@ -307,49 +236,6 @@ WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpat
 kubectl -n performance-test cp scenario/. "$WEBAPP_POD":/workspace/scenario/
 ```
 
-### 專案管理頁：建立新專案（含模板自動帶入）
-
-在「專案管理」頁可直接輸入新專案名稱並建立。
-
-建立成功時會自動建立 `scenario/<project>/`，並複製：
-
-- `.env`
-- `jmeter-system.properties`
-- `report-meta.env`
-
-模板來源優先序：
-
-1. `/workspace/scenario/_template`（PVC 內模板）
-2. `webapp/app/project_template_defaults`（webapp 內建 fallback）
-
-建立完成後，前端會立即切換到新專案，並自動讀取三個檔案到編輯器。
-
-若你有在環境內新增帳號（例如 `test1`），建議在升版前先備份 `users.json`：
-
-```bash
-# 備份 users.json 到本機
-WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
-kubectl -n performance-test cp "$WEBAPP_POD":/workspace/webapp/data/users.json ./users.backup.json
-```
-
-若因 PVC 重建或設定異動導致帳號遺失，可回寫：
-
-```bash
-WEBAPP_POD=$(kubectl -n performance-test get pod -l app=jmeter-webapp -o jsonpath='{.items[0].metadata.name}')
-kubectl -n performance-test cp ./users.backup.json "$WEBAPP_POD":/workspace/webapp/data/users.json
-kubectl -n performance-test rollout restart deploy/jmeter-webapp
-kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
-```
-
-> 若 `webapp/data` PVC 被刪除重建，舊 `users.json` 不會保留；此時沒有備份就只能用 bootstrap admin 重新建立帳號。
-
-如果你只要讓 webapp 重新拉取新版 `latest`，可直接重啟 deployment：
-
-```bash
-kubectl -n performance-test rollout restart deploy/jmeter-webapp
-kubectl -n performance-test rollout status deploy/jmeter-webapp --timeout=240s
-```
-
 ### D. 驗證 k8s 正在跑的 digest
 
 ```bash
@@ -462,3 +348,206 @@ kubectl -n performance-test get pods -o wide | grep -E 'jmeter-webapp|webapp'
 ```bash
 .venv312/bin/pip install -r webapp/requirements.txt
 ```
+
+## Webapp 功能說明
+
+### 1) 測試驅動
+
+- 選擇專案、Helm 環境與 release，啟動或停止 JMeter 分佈式測試。
+- 可選擇同步 CSV、Module 與產生測試報告。
+- 顯示背景程序、Master/Slave Job、Pod 與執行時間等狀態，並定期自動更新。
+
+### 2) 資料庫還原
+
+- 由環境設定列出可用的資料庫還原操作。
+
+#### 2.1 資料庫還原 API（尚未實作）
+
+> **目前狀態：僅模擬送出，功能頁面暫時隱藏，不會真的呼叫對接服務。**
+
+此功能預計透過外部 API 執行資料庫還原工作，目前只會預覽即將送出的請求內容：
+
+- 頁面路徑：`/db-restore`
+- 可選環境來源：`config/jmeter.<env>.env`
+- API 端點設定：各環境檔的 `JMETER_FLASHBACK_DB_API=<endpoint-url>`
+- API Token：`webapp/data/secrets/db_restore_tokens.json`
+
+預計支援的操作：
+
+1. 建立 Flashback 任務
+2. 查詢任務狀態
+3. 查詢所有任務
+4. 取消任務
+
+Token 檔案範例：
+
+```json
+{
+    "lab": "your-lab-token",
+    "dr-prod": "your-dr-prod-token"
+}
+```
+
+#### 2.2 Oracle Flashback 資料庫還原（目前已實作）
+
+Webapp 目前可透過 SSH 連接 Oracle 伺服器，執行以下五項還原操作：
+
+1. **建立還原點**（`create_rp.sh`）：為 PDB 建立 Oracle Flashback 還原點
+2. **查詢還原點**（`current_rp.sh`）：列出指定 PDB 的所有可用還原點
+3. **刪除還原點**（`delete_rp.sh`）：刪除指定 PDB 的還原點
+4. **查詢還原進度**（`fb_process.sh`）：查詢 Oracle 是否正在執行 Flashback Restore
+5. **執行還原**（`restore_rp.sh`）：將 PDB 還原到指定的還原點
+
+##### SSH 連接配置
+
+SSH 連接設定透過 Kubernetes Secret 管理。LAB 與 DR-Prod 環境各需建立一份 Secret。
+
+**LAB 環境：**
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/resources/lab/oracle-flashback-secret.yaml
+```
+
+或手動建立：
+
+```bash
+kubectl -n performance-test create secret generic oracle-flashback-ssh \
+    --from-literal=host=10.1.36.31 \
+    --from-literal=port=22 \
+    --from-literal=username=oracle \
+    --from-literal=password=<YOUR_PASSWORD> \
+    --from-literal=script_path=/home/oracle/scripts
+```
+
+**DR-Prod 環境：**
+
+```bash
+kubectl -n performance-test apply -f k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
+```
+
+若部署至第二個 namespace：
+
+```bash
+kubectl -n performance-test2 apply -f k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml
+```
+
+##### 前置要求
+
+1. 遠端 Oracle 伺服器的 `/home/oracle/scripts` 目錄中需存放以下 shell scripts：
+     - `create_rp.sh`
+     - `current_rp.sh`
+     - `delete_rp.sh`
+     - `fb_process.sh`
+     - `restore_rp.sh`
+2. Webapp 需要 `paramiko` 套件建立 SSH 連線（已列於 `webapp/requirements.txt`）。
+3. Oracle 帳號必須具備執行 SQL Plus 及管理 restore points 的權限。
+
+##### 使用方式
+
+1. 登入 Webapp 管理平台（`http://<webapp-host>/`）。
+2. 點擊導航列的「資料庫還原」。
+3. 選擇環境（LAB 或 DR-Prod）。
+4. 輸入 PDB 名稱（例如 `CDBC1`）。
+5. 依需求執行建立、查詢、刪除還原點、查詢還原進度或執行還原。
+
+執行還原前請確認還原點與 PDB 名稱正確；此操作會關閉 PDB 並執行 Flashback Restore。
+
+##### API 端點
+
+| 操作 | 方法 | 端點 | 說明 |
+|------|------|------|------|
+| 建立還原點 | POST | `/api/oracle-flashback/create-rp` | 建立新的還原點 |
+| 查詢還原點 | POST | `/api/oracle-flashback/list-rp` | 列出可用的還原點 |
+| 刪除還原點 | POST | `/api/oracle-flashback/delete-rp` | 刪除指定還原點 |
+| 查詢進度 | POST | `/api/oracle-flashback/check-process` | 檢查還原進度狀態 |
+| 執行還原 | POST | `/api/oracle-flashback/restore-rp` | 執行 Flashback Restore |
+
+##### 請求參數
+
+所有 API 端點都使用 `application/x-www-form-urlencoded` 格式：
+
+| 參數 | 必需 | 說明 |
+|------|------|------|
+| `env` | 是 | 環境名稱（`lab` 或 `dr-prod`） |
+| `pdb_name` | 是 | PDB 名稱 |
+| `restore_point` | 部分 | 建立、刪除及執行還原時必需 |
+
+##### 響應格式
+
+API 會回傳 JSON：
+
+```json
+{
+    "ok": true,
+    "env": "lab",
+    "pdb": "CDBC1",
+    "restore_point": "RP_20260327_153000",
+    "output": "...",
+    "error": "",
+    "exit_code": 0
+}
+```
+
+| 欄位 | 說明 |
+|------|------|
+| `ok` | 操作是否成功 |
+| `env` | 使用的環境 |
+| `pdb` | PDB 名稱 |
+| `restore_point` | 還原點名稱（如果適用） |
+| `output` | 命令執行的標準輸出 |
+| `error` | 命令執行的錯誤輸出 |
+| `exit_code` | Shell 命令的終止碼 |
+
+##### 故障排查
+
+- **連接失敗：** 檢查 Kubernetes Secret、網路連線、防火牆規則與 SSH 帳密。
+- **腳本執行失敗：** 確認遠端 scripts 存在且具備執行權限，並檢查 API 回應的 `error` 與 `output`。
+- **Oracle 權限問題：** 確認 Oracle 使用者可執行 SQL Plus、讀取 scripts 並管理 restore points。
+
+##### 相關文件
+
+- K8s Secret：`k8s/helm/environments/resources/lab/oracle-flashback-secret.yaml`、`k8s/helm/environments/resources/dr-prod/oracle-flashback-secret.yaml`
+- Service：`webapp/app/services/oracle_flashback_service.py`
+- API 路由：`webapp/app/routers/api.py`
+- Web UI：`webapp/app/templates/oracle_flashback.html`
+
+### 3) 設定管理
+
+- 依環境讀取及編輯 Helm `values` 與 JMeter 設定檔。
+- 提供內容預覽、複製、下載與儲存功能。
+
+### 4) 專案管理
+
+- 建立及選擇 `scenario/<project>/` 專案。
+- 上傳、下載 JMX，並編輯專案的 `.env`、`jmeter-system.properties` 與 `report-meta.env`。
+- 建立新專案時，會優先從 `/workspace/scenario/_template` 複製模板；沒有模板時使用 webapp 內建的 fallback。
+
+### 5) Dataset
+
+- 依專案或篩選條件維護 CSV Dataset，提供上傳、檢視、重新整理與 ZIP 下載。
+- 上傳既有檔案時，`Admin` 可覆蓋任意檔案；其他使用者只能覆蓋自己最初上傳的檔案，否則 API 回傳 `403`。
+- 上傳者與最近編輯者記錄於 `webapp/data/upload_owners.json`。
+
+### 6) 管理模組
+
+- 維護共用的 JMeter JMX Fragment 模組，檔案存放於 `scenario/module/`。
+- 支援上傳、確認覆蓋、檢視模組清單與重新整理，測試驅動頁可選擇同步使用 Module。
+
+### 7) 報告
+
+- 依專案及日期篩選、瀏覽與下載測試報告。
+- 支援下載單份 ZIP 或目前篩選結果的批次 ZIP；單次最多下載 `100` 個報告。
+
+### 8) Logs
+
+- 查看 JMeter Master/Slave Pod Logs，並以 Pod 清單搭配單一 Pod 詳細內容進行排查。
+- 支援 Pod 關鍵字搜尋及只顯示含 `ERROR`/`WARN` 的異常 Pod，清單也會顯示異常摘要。
+- `WARN`、`INFO`、`ERROR` 忽略規則由 Kubernetes `ConfigMap` 注入；每行設定一個 pattern，更新後需重啟 `jmeter-webapp` Pod。
+
+### 9) 使用者管理
+
+- 管理登入帳號、群組與功能權限；帳號資料儲存在 `webapp/data/users.json`。
+- 密碼以 PBKDF2-SHA256 加鹽雜湊儲存，不保存明碼。
+- 群組權限：`Admin` 可使用全部功能；`Executor` 除使用者管理外皆可用；`Tester` 不可使用測試驅動；`Viewer` 僅可查看報告與 Logs。
+- 首次部署若沒有帳號，需透過 `WEBAPP_BOOTSTRAP_ADMIN_USERNAME`、`WEBAPP_BOOTSTRAP_ADMIN_PASSWORD` 建立 bootstrap admin；群組可用 `WEBAPP_BOOTSTRAP_ADMIN_GROUP` 指定，預設為 `Admin`。
+- 建議以 Kubernetes Secret 注入 bootstrap 帳密，且為避免 PVC 重建造成帳號遺失，應備份 `users.json`。
