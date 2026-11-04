@@ -863,7 +863,7 @@ helm upgrade --install perf-stack k8s/helm \
 ./deploy_perf_stack.sh \
   -n performance-test2 \
   --helm-env lab \
-  --report-host report1-dr.mgnt.mvdis.gov.tw \
+  --report-host report2-dr.mgnt.mvdis.gov.tw \
   --grafana-host grafana2-dr.mgnt.mvdis.gov.tw \
   --webapp-host jmeter-web2-dr.mgnt.mvdis.gov.tw \
   --master-node-label pt-group=group-1-m \

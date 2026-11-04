@@ -22,8 +22,8 @@ podman push "$IMAGE"
 ./deploy_perf_stack.sh \
   --namespace performance-test \
   --helm-env lab \
-  --report-host report.example.com \
-  --grafana-host grafana.example.com \
+  --report-host jmeter-report.example.com \
+  --grafana-host jmeter-grafana.example.com \
   --webapp-host jmeter-web.example.com \
   --webapp-image-repository docker.io/isaac0815/jmeter-webapp \
   --webapp-image-tag "$IMAGE_TAG" \
@@ -36,8 +36,8 @@ podman push "$IMAGE"
 ./deploy_perf_stack.sh \
   --namespace performance-test2 \
   --helm-env lab \
-  --report-host repor2.example.com \
-  --grafana-host grafana2.example.com \
+  --report-host jmeter-report2.example.com \
+  --grafana-host jmeter-grafana2.example.com \
   --webapp-host jmeter-web2.example.com \
   --webapp-image-repository docker.io/isaac0815/jmeter-webapp \
   --webapp-image-tag "$IMAGE_TAG" \
